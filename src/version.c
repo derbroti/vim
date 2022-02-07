@@ -274,6 +274,11 @@ static char *(features[]) =
 #else
 	"-footer",
 #endif
+#ifdef FEAT_FORCE_HAS_STAR_REG
+	"+force_has_star_reg",
+#else
+	"-force_has_star_reg",
+#endif
 	    // only interesting on Unix systems
 #if !defined(USE_SYSTEM) && defined(UNIX)
 	"+fork()",
@@ -740,11 +745,6 @@ static char *(features[]) =
 	"+xterm_save",
 #else
 	"-xterm_save",
-#endif
-#ifdef FEAT_FORCE_HAS_STAR_REG
-    "+force_has_*_reg",
-#else
-    "-force_has_*_reg",
 #endif
 	NULL
 };
