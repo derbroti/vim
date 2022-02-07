@@ -377,6 +377,7 @@ N  *+find_in_path*	include file searches: |[I|, |:isearch|,
 			|CTRL-W_CTRL-I|, |:checkpath|, etc.
 N  *+folding*		|folding|
    *+footer*		|gui-footer|
+m  *+force_has_star_reg*    Enable star register independent of the clipboard feature.
    *+fork*		Unix only: |fork| shell commands
    *+float*		Floating point support
 N  *+gettext*		message translations |multi-lang|

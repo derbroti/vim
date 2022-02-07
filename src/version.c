@@ -741,6 +741,11 @@ static char *(features[]) =
 #else
 	"-xterm_save",
 #endif
+#ifdef FEAT_FORCE_HAS_STAR_REG
+    "+force_has_*_reg",
+#else
+    "-force_has_*_reg",
+#endif
 	NULL
 };
 

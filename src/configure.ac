@@ -2285,6 +2285,17 @@ else
 	AC_DEFINE(DISABLE_ARABIC)
 fi
 
+AC_MSG_CHECKING(--enable-force-has-star-reg argument)
+AC_ARG_ENABLE(force-has-star-reg,
+	[  --enable-force-has-star-reg        Enable star reg independent of clipboard.],
+	, [enable_force-has-star-reg="yes"])
+if test "$enable_force-has-star-reg" = "yes"; then
+	AC_MSG_RESULT(no)
+else
+	AC_MSG_RESULT(yes)
+	AC_DEFINE(FEAT_FORCE_HAS_STAR_REG)
+fi
+
 dnl Farsi language support has been removed, ignore --disable-farsi
 AC_ARG_ENABLE(farsi,
 	[  --disable-farsi         Deprecated.],,)

@@ -6238,6 +6238,13 @@ f_has(typval_T *argvars, typval_T *rettv)
 		0
 #endif
 		},
+	{"force_has_star_reg",
+#ifdef FEAT_FORCE_HAS_STAR_REG
+		1
+#else
+		0
+#endif
+		},
 	{NULL, 0}
     };
 

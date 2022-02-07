@@ -237,14 +237,23 @@ get_yank_register(int regname, int writing)
     }
     else if (regname == '-')
 	i = DELETION_REGISTER;
+
+#ifdef FEAT_FORCE_HAS_STAR_REG
+    else if (regname == '*')
+#else
 #ifdef FEAT_CLIPBOARD
     // When selection is not available, use register 0 instead of '*'
     else if (clip_star.available && regname == '*')
+#endif
+#endif
+#if defined FEAT_FORCE_HAS_STAR_REG || defined FEAT_CLIPBOARD
     {
 	i = STAR_REGISTER;
 	ret = TRUE;
     }
-    // When clipboard is not available, use register 0 instead of '+'
+#endif
+#ifdef FEAT_CLIPBOARD
+        // When clipboard is not available, use register 0 instead of '+'
     else if (clip_plus.available && regname == '+')
     {
 	i = PLUS_REGISTER;
@@ -1143,8 +1152,10 @@ op_yank(oparg_T *oap, int deleting, int mess)
 	return OK;
 
 #ifdef FEAT_CLIPBOARD
+#ifndef FEAT_FORCE_HAS_STAR_REG
     if (!clip_star.available && oap->regname == '*')
 	oap->regname = 0;
+#endif
     else if (!clip_plus.available && oap->regname == '+')
 	oap->regname = 0;
 #endif

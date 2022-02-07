@@ -2165,11 +2165,13 @@ may_get_selection(int regname)
 {
     if (regname == '*')
     {
-	if (!clip_star.available)
+	if (clip_star.available)
+        clip_get_selection(&clip_star);
+#ifndef FEAT_FORCE_HAS_STAR_REG
+    else
 	    regname = 0;
-	else
-	    clip_get_selection(&clip_star);
-    }
+#endif
+	}
     else if (regname == '+')
     {
 	if (!clip_plus.available)
@@ -2218,8 +2220,10 @@ adjust_clip_reg(int *rp)
 	    *rp = ((clip_unnamed_saved & CLIP_UNNAMED_PLUS)
 					   && clip_plus.available) ? '+' : '*';
     }
+#ifndef FEAT_FORCE_HAS_STAR_REG
     if (!clip_star.available && *rp == '*')
 	*rp = 0;
+#endif
     if (!clip_plus.available && *rp == '+')
 	*rp = 0;
 }
