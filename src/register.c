@@ -190,8 +190,10 @@ valid_yank_reg(
 	    || regname == '"'
 	    || regname == '-'
 	    || regname == '_'
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_FORCE_HAS_STAR_REG
 	    || regname == '*'
+#endif
+#ifdef FEAT_CLIPBOARD
 	    || regname == '+'
 #endif
 #ifdef FEAT_DND
@@ -2301,9 +2303,11 @@ get_register_name(int num)
 	return num + '0';
     else if (num == DELETION_REGISTER)
 	return '-';
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_FORCE_HAS_STAR_REG
     else if (num == STAR_REGISTER)
 	return '*';
+#endif
+#ifdef FEAT_CLIPBOARD
     else if (num == PLUS_REGISTER)
 	return '+';
 #endif
