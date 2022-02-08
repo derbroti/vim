@@ -37,6 +37,9 @@ static char *(p_fdo_values[]) = {"all", "block", "hor", "mark", "percent",
 				 "quickfix", "search", "tag", "insert",
 				 "undo", "jump", NULL};
 #endif
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+static char *(p_icr_values[]) = {"star", "plus", NULL};
+#endif
 #ifdef FEAT_SESSION
 // Also used for 'viewoptions'!  Keep in sync with SSOP_ flags.
 static char *(p_ssop_values[]) = {"buffers", "winpos", "resize", "winsize",
@@ -1743,6 +1746,13 @@ ambw_end:
 	errmsg = check_clipboard_option();
 #endif
 
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+    else if (varp == &p_icr)
+    {
+    if (opt_strings_flags(p_icr, p_icr_values, &icr_flags, TRUE) != OK)
+        errmsg = e_invalid_argument;
+    }
+#endif
 #ifdef FEAT_SPELL
     // When 'spelllang' or 'spellfile' is set and there is a window for this
     // buffer in which 'spell' is set load the wordlists.

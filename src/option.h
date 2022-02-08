@@ -492,6 +492,12 @@ EXTERN long	p_cwh;		// 'cmdwinheight'
 #ifdef FEAT_CLIPBOARD
 EXTERN char_u	*p_cb;		// 'clipboard'
 #endif
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+EXTERN char_u	*p_icr;		// 'independentclipregs'
+EXTERN unsigned icr_flags;
+#define ICR_STAR	0x01
+#define ICR_PLUS	0x02
+#endif
 EXTERN long	p_ch;		// 'cmdheight'
 #ifdef FEAT_FOLDING
 EXTERN char_u	*p_cms;		// 'commentstring'

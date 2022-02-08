@@ -274,10 +274,10 @@ static char *(features[]) =
 #else
 	"-footer",
 #endif
-#ifdef FEAT_FORCE_HAS_STAR_REG
-	"+force_has_star_reg",
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+	"+independent_clip_regs",
 #else
-	"-force_has_star_reg",
+	"-independent_clip_regs",
 #endif
 	    // only interesting on Unix systems
 #if !defined(USE_SYSTEM) && defined(UNIX)

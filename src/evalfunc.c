@@ -6238,8 +6238,8 @@ f_has(typval_T *argvars, typval_T *rettv)
 		0
 #endif
 		},
-	{"force_has_star_reg",
-#ifdef FEAT_FORCE_HAS_STAR_REG
+	{"independent_clip_regs",
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
 		1
 #else
 		0

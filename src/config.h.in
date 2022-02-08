@@ -406,8 +406,8 @@
 /* Define if you don't want to include Arabic support. */
 #undef DISABLE_ARABIC
 
-/* Define if you want to have the star reg independent of the clipboard. */
-#undef FEAT_FORCE_HAS_STAR_REG
+/* Define if you want to enable the clip regs independent of a working clipboard. */
+#undef FEAT_INDEPENDENT_CLIP_REGS
 
 /* Define if you want to always define a server name at vim startup. */
 #undef FEAT_AUTOSERVERNAME

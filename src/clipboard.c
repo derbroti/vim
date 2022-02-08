@@ -2167,17 +2167,23 @@ may_get_selection(int regname)
     {
 	if (clip_star.available)
         clip_get_selection(&clip_star);
-#ifndef FEAT_FORCE_HAS_STAR_REG
-    else
-	    regname = 0;
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+	else if(!(icr_flags & ICR_STAR))
+#else
+	else
 #endif
+	    regname = 0;
 	}
     else if (regname == '+')
     {
-	if (!clip_plus.available)
-	    regname = 0;
-	else
+	if (clip_plus.available)
 	    clip_get_selection(&clip_plus);
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+	else if(!(icr_flags & ICR_PLUS))
+#else
+	else
+#endif
+	    regname = 0;
     }
     return regname;
 }
@@ -2220,11 +2226,17 @@ adjust_clip_reg(int *rp)
 	    *rp = ((clip_unnamed_saved & CLIP_UNNAMED_PLUS)
 					   && clip_plus.available) ? '+' : '*';
     }
-#ifndef FEAT_FORCE_HAS_STAR_REG
+#ifndef FEAT_INDEPENDENT_CLIP_REGS
     if (!clip_star.available && *rp == '*')
-	*rp = 0;
+#else
+    if (!(icr_flags & ICR_STAR) && *rp == '*')
 #endif
+	*rp = 0;
+#ifndef FEAT_INDEPENDENT_CLIP_REGS
     if (!clip_plus.available && *rp == '+')
+#else
+    if (!(icr_flags & ICR_PLUS) && *rp == '+')
+#endif
 	*rp = 0;
 }
 

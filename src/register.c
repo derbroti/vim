@@ -190,11 +190,15 @@ valid_yank_reg(
 	    || regname == '"'
 	    || regname == '-'
 	    || regname == '_'
-#if defined FEAT_CLIPBOARD || defined FEAT_FORCE_HAS_STAR_REG
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
 	    || regname == '*'
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+	    && (icr_flags & ICR_STAR)
 #endif
-#ifdef FEAT_CLIPBOARD
 	    || regname == '+'
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+	    && (icr_flags & ICR_PLUS)
+#endif
 #endif
 #ifdef FEAT_DND
 	    || (!writing && regname == '~')
@@ -240,23 +244,29 @@ get_yank_register(int regname, int writing)
     else if (regname == '-')
 	i = DELETION_REGISTER;
 
-#ifdef FEAT_FORCE_HAS_STAR_REG
-    else if (regname == '*')
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+    else if (regname == '*' && (icr_flags & ICR_STAR))
 #else
 #ifdef FEAT_CLIPBOARD
     // When selection is not available, use register 0 instead of '*'
     else if (clip_star.available && regname == '*')
 #endif
 #endif
-#if defined FEAT_FORCE_HAS_STAR_REG || defined FEAT_CLIPBOARD
+#if defined FEAT_INDEPENDENT_CLIP_REGS || defined FEAT_CLIPBOARD
     {
 	i = STAR_REGISTER;
 	ret = TRUE;
     }
 #endif
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+    else if (regname == '+' && (icr_flags & ICR_PLUS))
+#else
 #ifdef FEAT_CLIPBOARD
-        // When clipboard is not available, use register 0 instead of '+'
+    // When clipboard is not available, use register 0 instead of '+'
     else if (clip_plus.available && regname == '+')
+#endif
+#endif
+#if defined FEAT_INDEPENDENT_CLIP_REGS || defined FEAT_CLIPBOARD
     {
 	i = PLUS_REGISTER;
 	ret = TRUE;
@@ -1154,11 +1164,17 @@ op_yank(oparg_T *oap, int deleting, int mess)
 	return OK;
 
 #ifdef FEAT_CLIPBOARD
-#ifndef FEAT_FORCE_HAS_STAR_REG
+#ifndef FEAT_INDEPENDENT_CLIP_REGS
     if (!clip_star.available && oap->regname == '*')
-	oap->regname = 0;
+#else
+    if (!(icr_flags & ICR_STAR) && oap->regname == '*')
 #endif
+	oap->regname = 0;
+#ifndef FEAT_INDEPENDENT_CLIP_REGS
     else if (!clip_plus.available && oap->regname == '+')
+#else
+    if (!(icr_flags & ICR_PLUS) && oap->regname == '#')
+#endif
 	oap->regname = 0;
 #endif
 
@@ -2303,11 +2319,9 @@ get_register_name(int num)
 	return num + '0';
     else if (num == DELETION_REGISTER)
 	return '-';
-#if defined FEAT_CLIPBOARD || defined FEAT_FORCE_HAS_STAR_REG
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     else if (num == STAR_REGISTER)
 	return '*';
-#endif
-#ifdef FEAT_CLIPBOARD
     else if (num == PLUS_REGISTER)
 	return '+';
 #endif

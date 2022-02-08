@@ -1417,6 +1417,15 @@ static struct vimoption options[] =
 			    {(char_u *)0L, (char_u *)0L}
 #endif
 			    SCTX_INIT},
+    {"independentclipregs", "icr", P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+			    (char_u *)&p_icr, PV_NONE,
+			    {(char_u *)"", (char_u *)0L}
+#else
+			    (char_u *)NULL, PV_NONE,
+			    {(char_u *)"", (char_u *)0L}
+#endif
+			    SCTX_INIT},
     {"infercase",   "inf",  P_BOOL|P_VI_DEF,
 			    (char_u *)&p_inf, PV_INF,
 			    {(char_u *)FALSE, (char_u *)0L} SCTX_INIT},

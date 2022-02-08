@@ -2285,15 +2285,15 @@ else
 	AC_DEFINE(DISABLE_ARABIC)
 fi
 
-AC_MSG_CHECKING(--enable-force-has-star-reg argument)
-AC_ARG_ENABLE(force-has-star-reg,
-	[  --enable-force-has-star-reg        Enable star reg independent of clipboard.],
-	, [enable_force-has-star-reg="yes"])
-if test "$enable_force-has-star-reg" = "yes"; then
+AC_MSG_CHECKING(--disable-independent-clip-regs argument)
+AC_ARG_ENABLE(independent-clip-regs,
+	[  --disable-independent-clip-regs        Only enable clip regs with a working clipboard.],
+	, [enable_independent_clip_regs="yes"])
+if test "$enable_independent_clip_regs" = "yes"; then
 	AC_MSG_RESULT(no)
+	AC_DEFINE(FEAT_INDEPENDENT_CLIP_REGS)
 else
 	AC_MSG_RESULT(yes)
-	AC_DEFINE(FEAT_FORCE_HAS_STAR_REG)
 fi
 
 dnl Farsi language support has been removed, ignore --disable-farsi
