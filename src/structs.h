@@ -4345,7 +4345,7 @@ typedef enum {
 # define TILDE_REGISTER		(PLUS_REGISTER + 1)
 #endif
 
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
 # ifdef FEAT_DND
 #  define NUM_REGISTERS		(TILDE_REGISTER + 1)
 # else

@@ -24,6 +24,8 @@ int has_textchangedP(void);
 int has_insertcharpre(void);
 int has_cmdundefined(void);
 int has_textyankpost(void);
+int has_writeclippost(void);
+int has_readclippre(void);
 int has_completechanged(void);
 int has_modechanged(void);
 void block_autocmds(void);

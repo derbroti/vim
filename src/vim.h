@@ -1367,6 +1367,8 @@ enum auto_event
     EVENT_TEXTCHANGEDI,         // text was modified in Insert mode
     EVENT_TEXTCHANGEDP,         // TextChangedI with popup menu visible
     EVENT_TEXTYANKPOST,		// after some text was yanked
+    EVENT_WRITECLIPPOST,    // after new text for the clipboard was written
+    EVENT_READCLIPPRE,      // before the clipboard is supposed to be read
     EVENT_USER,			// user defined autocommand
     EVENT_VIMENTER,		// after starting Vim
     EVENT_VIMLEAVE,		// before exiting Vim

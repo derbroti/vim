@@ -2156,6 +2156,44 @@ clip_convert_selection(char_u **str, long_u *len, Clipboard_T *cbd)
     return y_ptr->y_type;
 }
 
+#endif // FEAT_CLIPBOARD
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+
+#if defined(FEAT_EVAL)
+    void
+clip_do_autocmd(int regname, int write)
+{
+    static int	    recursive = FALSE;
+    dict_T	    *v_event;
+    char_u	    buf[NUMBUFLEN + 2];
+    save_v_event_T  save_v_event;
+
+    if (recursive)
+	return;
+
+    v_event = get_v_event(&save_v_event);
+
+    buf[0] = (char_u)regname;
+    buf[1] = NUL;
+    (void)dict_add_string(v_event, "regname", buf);
+
+    // Lock the dictionary and its keys
+    dict_set_items_ro(v_event);
+
+    recursive = TRUE;
+    textwinlock++;
+    if (write)
+        apply_autocmds(EVENT_WRITECLIPPOST, NULL, NULL, FALSE, curbuf);
+    else
+        apply_autocmds(EVENT_READCLIPPRE, NULL, NULL, FALSE, curbuf);
+    textwinlock--;
+    recursive = FALSE;
+
+    // Empty the dictionary, v:event is still valid
+    restore_v_event(v_event, &save_v_event);
+}
+#endif
+
 /*
  * When "regname" is a clipboard register, obtain the selection.  If it's not
  * available return zero, otherwise return "regname".
@@ -2163,28 +2201,32 @@ clip_convert_selection(char_u **str, long_u *len, Clipboard_T *cbd)
     int
 may_get_selection(int regname)
 {
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+    if (regname == '*' && (icr_flags & ICR_STAR) ||
+        regname == '+' && (icr_flags & ICR_PLUS))
+    {
+        if (has_readclippre())
+            clip_do_autocmd(regname, 0);
+        return regname;
+    }
+#endif
+
+#ifdef FEAT_CLIPBOARD
     if (regname == '*')
     {
 	if (clip_star.available)
         clip_get_selection(&clip_star);
-#ifdef FEAT_INDEPENDENT_CLIP_REGS
-	else if(!(icr_flags & ICR_STAR))
-#else
-	else
-#endif
+    else
 	    regname = 0;
 	}
     else if (regname == '+')
     {
 	if (clip_plus.available)
 	    clip_get_selection(&clip_plus);
-#ifdef FEAT_INDEPENDENT_CLIP_REGS
-	else if(!(icr_flags & ICR_PLUS))
-#else
 	else
-#endif
 	    regname = 0;
     }
+#endif
     return regname;
 }
 
@@ -2192,8 +2234,18 @@ may_get_selection(int regname)
  * If we have written to a clipboard register, send the text to the clipboard.
  */
     void
-may_set_selection(void)
+may_set_selection(int regname)
 {
+#ifdef FEAT_INDEPENDENT_CLIP_REGS
+    if (regname == '*' && (icr_flags & ICR_STAR) ||
+        regname == '+' && (icr_flags & ICR_PLUS))
+    {
+        if (has_writeclippost())
+            clip_do_autocmd(regname, 1);
+        return;
+    }
+#endif
+#ifdef FEAT_CLIPBOARD
     if ((get_y_current() == get_y_register(STAR_REGISTER))
 	    && clip_star.available)
     {
@@ -2206,6 +2258,7 @@ may_set_selection(void)
 	clip_own_selection(&clip_plus);
 	clip_gen_set_selection(&clip_plus);
     }
+#endif
 }
 
 /*
@@ -2215,17 +2268,20 @@ may_set_selection(void)
     void
 adjust_clip_reg(int *rp)
 {
+#ifdef FEAT_CLIPBOARD
     // If no reg. specified, and "unnamed" or "unnamedplus" is in 'clipboard',
     // use '*' or '+' reg, respectively. "unnamedplus" prevails.
     if (*rp == 0 && (clip_unnamed != 0 || clip_unnamed_saved != 0))
     {
 	if (clip_unnamed != 0)
-	    *rp = ((clip_unnamed & CLIP_UNNAMED_PLUS) && clip_plus.available)
+	    *rp = ((clip_unnamed & CLIP_UNNAMED_PLUS) &&
+                clip_plus.available)
 								  ? '+' : '*';
 	else
 	    *rp = ((clip_unnamed_saved & CLIP_UNNAMED_PLUS)
 					   && clip_plus.available) ? '+' : '*';
     }
+#endif
 #ifndef FEAT_INDEPENDENT_CLIP_REGS
     if (!clip_star.available && *rp == '*')
 #else
@@ -2240,4 +2296,5 @@ adjust_clip_reg(int *rp)
 	*rp = 0;
 }
 
-#endif // FEAT_CLIPBOARD
+#endif // FEAT_INDEPENDENT_CLIP_REGS
+

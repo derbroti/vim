@@ -753,6 +753,9 @@ op_delete(oparg_T *oap)
 #if defined(FEAT_EVAL)
 	if (did_yank && has_textyankpost())
 	    yank_do_autocmd(oap, get_y_current());
+    //TODO check for icr_* here?
+    if (did_yank && has_writeclippost())
+        clip_do_autocmd(oap->regname, 1);
 #endif
     }
 

@@ -33,7 +33,7 @@ static void	put_reedit_in_typebuf(int silent);
 static int	put_in_typebuf(char_u *s, int esc, int colon,
 								 int silent);
 static int	yank_copy_line(struct block_def *bd, long y_idx, int exclude_trailing_space);
-#ifdef FEAT_CLIPBOARD
+#if defined(FEAT_CLIPBOARD) || defined(FEAT_INDEPENDENT_CLIP_REGS)
 static void	copy_yank_reg(yankreg_T *reg);
 #endif
 static void	dis_msg(char_u *p, int skip_esc);
@@ -46,7 +46,7 @@ get_y_regs(void)
 }
 #endif
 
-#if defined(FEAT_CLIPBOARD) || defined(PROTO)
+#if defined(FEAT_CLIPBOARD) || defined(FEAT_INDEPENDENT_CLIP_REGS) || defined(PROTO)
     yankreg_T *
 get_y_register(int reg)
 {
@@ -192,13 +192,13 @@ valid_yank_reg(
 	    || regname == '_'
 #if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
 	    || regname == '*'
-#ifdef FEAT_INDEPENDENT_CLIP_REGS
+# ifdef FEAT_INDEPENDENT_CLIP_REGS
 	    && (icr_flags & ICR_STAR)
-#endif
+# endif
 	    || regname == '+'
-#ifdef FEAT_INDEPENDENT_CLIP_REGS
+# ifdef FEAT_INDEPENDENT_CLIP_REGS
 	    && (icr_flags & ICR_PLUS)
-#endif
+# endif
 #endif
 #ifdef FEAT_DND
 	    || (!writing && regname == '~')
@@ -247,10 +247,10 @@ get_yank_register(int regname, int writing)
 #ifdef FEAT_INDEPENDENT_CLIP_REGS
     else if (regname == '*' && (icr_flags & ICR_STAR))
 #else
-#ifdef FEAT_CLIPBOARD
+# ifdef FEAT_CLIPBOARD
     // When selection is not available, use register 0 instead of '*'
     else if (clip_star.available && regname == '*')
-#endif
+# endif
 #endif
 #if defined FEAT_INDEPENDENT_CLIP_REGS || defined FEAT_CLIPBOARD
     {
@@ -261,10 +261,10 @@ get_yank_register(int regname, int writing)
 #ifdef FEAT_INDEPENDENT_CLIP_REGS
     else if (regname == '+' && (icr_flags & ICR_PLUS))
 #else
-#ifdef FEAT_CLIPBOARD
+# ifdef FEAT_CLIPBOARD
     // When clipboard is not available, use register 0 instead of '+'
     else if (clip_plus.available && regname == '+')
-#endif
+# endif
 #endif
 #if defined FEAT_INDEPENDENT_CLIP_REGS || defined FEAT_CLIPBOARD
     {
@@ -296,19 +296,47 @@ get_register(
     yankreg_T	*reg;
     int		i;
 
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     // When Visual area changed, may have to update selection.  Obtain the
     // selection too.
-    if (name == '*' && clip_star.available)
+    if (name == '*' && (
+# ifdef FEAT_CLIPBOARD
+            clip_star.available
+# else
+           1
+# endif
+           ||
+# ifdef FEAT_INDEPENDENT_CLIP_REGS
+           (icr_flags & ICR_STAR)
+# else
+            1
+# endif
+            ))
     {
+# ifdef FEAT_CLIPBOARD
 	if (clip_isautosel_star())
 	    clip_update_selection(&clip_star);
+# endif
 	may_get_selection(name);
     }
-    if (name == '+' && clip_plus.available)
+    if (name == '+' && (
+# ifdef FEAT_CLIPBOARD
+            clip_plus.available
+# else
+           1
+# endif
+           ||
+# ifdef FEAT_INDEPENDENT_CLIP_REGS
+           (icr_flags & ICR_PLUS)
+# else
+            1
+# endif
+            ))
     {
+# ifdef FEAT_CLIPBOARD
 	if (clip_isautosel_plus())
 	    clip_update_selection(&clip_plus);
+# endif
 	may_get_selection(name);
     }
 #endif
@@ -348,13 +376,13 @@ put_register(int name, void *reg)
     *y_current = *(yankreg_T *)reg;
     vim_free(reg);
 
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     // Send text written to clipboard register to the clipboard.
-    may_set_selection();
+    may_set_selection(name);
 #endif
 }
 
-#if defined(FEAT_CLIPBOARD) || defined(PROTO)
+#if defined(FEAT_CLIPBOARD) || defined(FEAT_INDEPENDENT_CLIP_REGS) || defined(PROTO)
     void
 free_register(void *reg)
 {
@@ -615,7 +643,7 @@ do_execreg(
     }
     execreg_lastc = regname;
 
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     regname = may_get_selection(regname);
 #endif
 
@@ -822,7 +850,7 @@ insert_reg(
     if (regname != NUL && !valid_yank_reg(regname, FALSE))
 	return FAIL;
 
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     regname = may_get_selection(regname);
 #endif
 
@@ -1421,7 +1449,8 @@ op_yank(oparg_T *oap, int deleting, int mess)
 	    copy_yank_reg(&(y_regs[STAR_REGISTER]));
 
 	clip_own_selection(&clip_star);
-	clip_gen_set_selection(&clip_star);
+#endif
+#ifdef FEAT_CLIPBOARD
 # ifdef FEAT_X11
 	did_star = TRUE;
 # endif
@@ -1460,6 +1489,9 @@ op_yank(oparg_T *oap, int deleting, int mess)
 #if defined(FEAT_EVAL)
     if (!deleting && has_textyankpost())
 	yank_do_autocmd(oap, y_current);
+
+    if (!deleting && has_writeclippost())
+        clip_do_autocmd(oap->regname, 1);
 #endif
 
     return OK;
@@ -1583,7 +1615,7 @@ do_put(
     pos_T	orig_end = curbuf->b_op_end;
     unsigned int cur_ve_flags = get_ve_flags();
 
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     // Adjust register name for "unnamed" in 'clipboard'.
     adjust_clip_reg(&regname);
     (void)may_get_selection(regname);
@@ -2379,7 +2411,7 @@ ex_display(exarg_T *eap)
 		)
 	    continue;	    // did not ask for this register
 
-#ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined(FEAT_INDEPENDENT_CLIP_REGS)
 	// Adjust register name for "unnamed" in 'clipboard'.
 	// When it's a clipboard register, fill it with the current contents
 	// of the clipboard.
@@ -2577,7 +2609,7 @@ get_reg_type(int regname, long *reglen)
 	    return MCHAR;
     }
 
-# ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     regname = may_get_selection(regname);
 # endif
 
@@ -2656,7 +2688,7 @@ get_reg_contents(int regname, int flags)
     if (regname != NUL && !valid_yank_reg(regname, FALSE))
 	return NULL;
 
-# ifdef FEAT_CLIPBOARD
+#if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     regname = may_get_selection(regname);
 # endif
 
@@ -2754,9 +2786,9 @@ finish_write_reg(
     yankreg_T	*old_y_previous,
     yankreg_T	*old_y_current)
 {
-# ifdef FEAT_CLIPBOARD
+# if defined FEAT_CLIPBOARD || defined FEAT_INDEPENDENT_CLIP_REGS
     // Send text of clipboard register to the clipboard.
-    may_set_selection();
+    may_set_selection(name);
 # endif
 
     // ':let @" = "val"' should change the meaning of the "" register

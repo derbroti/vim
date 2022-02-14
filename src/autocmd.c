@@ -191,6 +191,8 @@ static struct event_name
     {"WinLeave",	EVENT_WINLEAVE},
     {"VimResized",	EVENT_VIMRESIZED},
     {"TextYankPost",	EVENT_TEXTYANKPOST},
+    {"WriteClipPost",	EVENT_WRITECLIPPOST},
+    {"ReadClipPre",	EVENT_READCLIPPRE},
     {"VimSuspend",	EVENT_VIMSUSPEND},
     {"VimResume",	EVENT_VIMRESUME},
     {NULL,		(event_T)0}
@@ -1840,6 +1842,29 @@ has_textyankpost(void)
     return (first_autopat[(int)EVENT_TEXTYANKPOST] != NULL);
 }
 #endif
+
+#if defined(FEAT_EVAL) || defined(PROTO)
+/*
+ * Return TRUE when there is a WriteClipPost autocommand defined.
+ */
+    int
+has_writeclippost(void)
+{
+    return (first_autopat[(int)EVENT_WRITECLIPPOST] != NULL);
+}
+#endif
+
+#if defined(FEAT_EVAL) || defined(PROTO)
+/*
+ * Return TRUE when there is a ReadClipPre autocommand defined.
+ */
+    int
+has_readclippre(void)
+{
+    return (first_autopat[(int)EVENT_READCLIPPRE] != NULL);
+}
+#endif
+
 
 #if defined(FEAT_EVAL) || defined(PROTO)
 /*

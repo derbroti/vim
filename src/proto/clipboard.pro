@@ -32,7 +32,8 @@ void clip_free_selection(Clipboard_T *cbd);
 void clip_get_selection(Clipboard_T *cbd);
 void clip_yank_selection(int type, char_u *str, long len, Clipboard_T *cbd);
 int clip_convert_selection(char_u **str, long_u *len, Clipboard_T *cbd);
+void clip_do_autocmd(int regname, int write);
 int may_get_selection(int regname);
-void may_set_selection(void);
+void may_set_selection(int regname);
 void adjust_clip_reg(int *rp);
 /* vim: set ft=c : */
