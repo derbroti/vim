@@ -198,6 +198,26 @@ func Test_list_range_assign()
   call v9.CheckDefAndScriptFailure(lines, 'E1012:', 2)
 endfunc
 
+func Test_list_items()
+  let r = []
+  let l = ['a', 'b', 'c']
+  for [idx, val] in items(l)
+    call extend(r, [[idx, val]])
+  endfor
+  call assert_equal([[0, 'a'], [1, 'b'], [2, 'c']], r)
+
+  call assert_fails('call items(3)', 'E1225:')
+endfunc
+
+func Test_string_items()
+  let r = []
+  let s = 'ábツ'
+  for [idx, val] in items(s)
+    call extend(r, [[idx, val]])
+  endfor
+  call assert_equal([[0, 'á'], [1, 'b'], [2, 'ツ']], r)
+endfunc
+
 " Test removing items in list
 func Test_list_func_remove()
   let lines =<< trim END
@@ -301,6 +321,10 @@ func Test_dict()
 
   " allow key starting with number at the start, not a curly expression
   call assert_equal({'1foo': 77}, #{1foo: 77})
+
+  " #{expr} is not a curly expression
+  let x = 'x'
+  call assert_equal(#{g: x}, #{g:x})
 endfunc
 
 " This was allowed in legacy Vim script
@@ -349,7 +373,7 @@ func Test_dict_big()
   endtry
   call assert_equal('Vim(let):E716: "1500"', str)
 
-  " lookup each items
+  " lookup each item
   for i in range(1500)
     call assert_equal(3000 - i, d[i])
   endfor
@@ -411,13 +435,13 @@ func Test_dict_assign()
     let n = 0
     let n.key = 3
   END
-  call v9.CheckScriptFailure(lines, 'E1203: Dot can only be used on a dictionary: n.key = 3')
+  call v9.CheckScriptFailure(lines, 'E1203: Dot not allowed after a number: n.key = 3')
   let lines =<< trim END
     vim9script
     var n = 0
     n.key = 3
   END
-  call v9.CheckScriptFailure(lines, 'E1203: Dot can only be used on a dictionary: n.key = 3')
+  call v9.CheckScriptFailure(lines, 'E1203: Dot not allowed after a number: n.key = 3')
   let lines =<< trim END
     var n = 0
     n.key = 3
@@ -492,7 +516,7 @@ func Test_dict_func_remove()
       var d = {1: 'a', 3: 'c'}
       call remove(d, [])
   END
-  call v9.CheckDefExecFailure(lines, 'E1013: Argument 2: type mismatch, expected string but got list<unknown>')
+  call v9.CheckDefExecFailure(lines, 'E1013: Argument 2: type mismatch, expected string but got list<any>')
 endfunc
 
 " Nasty: remove func from Dict that's being called (works)
@@ -548,7 +572,7 @@ func Test_dict_deepcopy()
   END
   call v9.CheckLegacyAndVim9Success(lines)
 
-  call assert_fails("call deepcopy([1, 2], 2)", 'E1023:')
+  call assert_fails("call deepcopy([1, 2], 2)", 'E1212:')
 endfunc
 
 " Locked variables
@@ -721,10 +745,13 @@ func Test_list_locked_var_unlet()
     endfor
   endfor
 
-  " Deleting a list range should fail if the range is locked
+  " Deleting a list range with locked items works, but changing the items
+  " fails.
   let l = [1, 2, 3, 4]
   lockvar l[1:2]
-  call assert_fails('unlet l[1:2]', 'E741:')
+  call assert_fails('let l[1:2] = [8, 9]', 'E741:')
+  unlet l[1:2]
+  call assert_equal([1, 4], l)
   unlet l
 endfunc
 
@@ -939,28 +966,36 @@ func Test_reverse_sort_uniq()
       call assert_equal(['-0', 'A11', 2, 'xaaa', 4, 'foo', 'foo6', 'foo', [0, 1, 2], 'x8', [0, 1, 2], 1.5], uniq(copy(l)))
       call assert_equal([1.5, [0, 1, 2], 'x8', [0, 1, 2], 'foo', 'foo6', 'foo', 4, 'xaaa', 2, 2, 'A11', '-0'], reverse(l))
       call assert_equal([1.5, [0, 1, 2], 'x8', [0, 1, 2], 'foo', 'foo6', 'foo', 4, 'xaaa', 2, 2, 'A11', '-0'], reverse(reverse(l)))
-      if has('float')
-        call assert_equal(['-0', 'A11', 'foo', 'foo', 'foo6', 'x8', 'xaaa', 1.5, 2, 2, 4, [0, 1, 2], [0, 1, 2]], sort(l))
-        call assert_equal([[0, 1, 2], [0, 1, 2], 4, 2, 2, 1.5, 'xaaa', 'x8', 'foo6', 'foo', 'foo', 'A11', '-0'], reverse(sort(l)))
-        call assert_equal(['-0', 'A11', 'foo', 'foo', 'foo6', 'x8', 'xaaa', 1.5, 2, 2, 4, [0, 1, 2], [0, 1, 2]], sort(reverse(sort(l))))
-        call assert_equal(['-0', 'A11', 'foo', 'foo6', 'x8', 'xaaa', 1.5, 2, 4, [0, 1, 2]], uniq(sort(l)))
+      call assert_equal(['-0', 'A11', 'foo', 'foo', 'foo6', 'x8', 'xaaa', 1.5, 2, 2, 4, [0, 1, 2], [0, 1, 2]], sort(l))
+      call assert_equal([[0, 1, 2], [0, 1, 2], 4, 2, 2, 1.5, 'xaaa', 'x8', 'foo6', 'foo', 'foo', 'A11', '-0'], reverse(sort(l)))
+      call assert_equal(['-0', 'A11', 'foo', 'foo', 'foo6', 'x8', 'xaaa', 1.5, 2, 2, 4, [0, 1, 2], [0, 1, 2]], sort(reverse(sort(l))))
+      call assert_equal(['-0', 'A11', 'foo', 'foo6', 'x8', 'xaaa', 1.5, 2, 4, [0, 1, 2]], uniq(sort(l)))
 
-        LET l = [7, 9, 'one', 18, 12, 22, 'two', 10.0e-16, -1, 'three', 0xff, 0.22, 'four']
-        call assert_equal([-1, 'one', 'two', 'three', 'four', 1.0e-15, 0.22, 7, 9, 12, 18, 22, 255], sort(copy(l), 'n'))
+      LET l = [7, 9, 'one', 18, 12, 22, 'two', 10.0e-16, -1, 'three', 0xff, 0.22, 'four']
+      call assert_equal([-1, 'one', 'two', 'three', 'four', 1.0e-15, 0.22, 7, 9, 12, 18, 22, 255], sort(copy(l), 'n'))
 
-        LET l = [7, 9, 18, 12, 22, 10.0e-16, -1, 0xff, 0, -0, 0.22, 'bar', 'BAR', 'Bar', 'Foo', 'FOO', 'foo', 'FOOBAR', {}, []]
-        call assert_equal(['bar', 'BAR', 'Bar', 'Foo', 'FOO', 'foo', 'FOOBAR', -1, 0, 0, 0.22, 1.0e-15, 12, 18, 22, 255, 7, 9, [], {}], sort(copy(l), 1))
-        call assert_equal(['bar', 'BAR', 'Bar', 'Foo', 'FOO', 'foo', 'FOOBAR', -1, 0, 0, 0.22, 1.0e-15, 12, 18, 22, 255, 7, 9, [], {}], sort(copy(l), 'i'))
-        call assert_equal(['BAR', 'Bar', 'FOO', 'FOOBAR', 'Foo', 'bar', 'foo', -1, 0, 0, 0.22, 1.0e-15, 12, 18, 22, 255, 7, 9, [], {}], sort(copy(l)))
-      endif
+      LET l = [7, 9, 18, 12, 22, 10.0e-16, -1, 0xff, 0, -0, 0.22, 'bar', 'BAR', 'Bar', 'Foo', 'FOO', 'foo', 'FOOBAR', {}, []]
+      call assert_equal(['bar', 'BAR', 'Bar', 'Foo', 'FOO', 'foo', 'FOOBAR', -1, 0, 0, 0.22, 1.0e-15, 12, 18, 22, 255, 7, 9, [], {}], sort(copy(l), 'i'))
+      call assert_equal(['bar', 'BAR', 'Bar', 'Foo', 'FOO', 'foo', 'FOOBAR', -1, 0, 0, 0.22, 1.0e-15, 12, 18, 22, 255, 7, 9, [], {}], sort(copy(l), 'i'))
+      call assert_equal(['BAR', 'Bar', 'FOO', 'FOOBAR', 'Foo', 'bar', 'foo', -1, 0, 0, 0.22, 1.0e-15, 12, 18, 22, 255, 7, 9, [], {}], sort(copy(l)))
   END
   call v9.CheckLegacyAndVim9Success(lines)
 
-  call assert_fails('call reverse("")', 'E899:')
+  call assert_fails('call reverse({})', 'E1252:')
   call assert_fails('call uniq([1, 2], {x, y -> []})', 'E745:')
-  call assert_fails("call sort([1, 2], function('min'), 1)", "E715:")
+  call assert_fails("call sort([1, 2], function('min'), 1)", "E1206:")
   call assert_fails("call sort([1, 2], function('invalid_func'))", "E700:")
   call assert_fails("call sort([1, 2], function('min'))", "E118:")
+
+  let lines =<< trim END
+    call sort(['a', 'b'], 0)
+  END
+  call v9.CheckDefAndScriptFailure(lines, 'E1256: String or function required for argument 2')
+
+  let lines =<< trim END
+    call sort(['a', 'b'], 1)
+  END
+  call v9.CheckDefAndScriptFailure(lines, 'E1256: String or function required for argument 2')
 endfunc
 
 " reduce a list, blob or string
@@ -980,6 +1015,12 @@ func Test_reduce()
       call assert_equal('x y z', reduce(['x', 'y', 'z'], LSTART acc, val LMIDDLE acc .. ' ' .. val LEND))
       call assert_equal(120, range(1, 5)->reduce(LSTART acc, val LMIDDLE acc * val LEND))
 
+      call assert_equal(0, range(1)->reduce(LSTART acc, val LMIDDLE acc + val LEND))
+      call assert_equal(1, range(2)->reduce(LSTART acc, val LMIDDLE acc + val LEND))
+      call assert_equal(3, range(3)->reduce(LSTART acc, val LMIDDLE acc + val LEND))
+      call assert_equal(6, range(4)->reduce(LSTART acc, val LMIDDLE acc + val LEND))
+      call assert_equal(10, range(5)->reduce(LSTART acc, val LMIDDLE acc + val LEND))
+
       call assert_equal(1, reduce(0z, LSTART acc, val LMIDDLE acc + val LEND, 1))
       call assert_equal(1 + 0xaf + 0xbf + 0xcf, reduce(0zAFBFCF, LSTART acc, val LMIDDLE acc + val LEND, 1))
       call assert_equal(2 * (2 * 1 + 0xaf) + 0xbf, 0zAFBF->reduce(LSTART acc, val LMIDDLE 2 * acc + val LEND, 1))
@@ -996,6 +1037,10 @@ func Test_reduce()
       call assert_equal('Å,s,t,r,ö,m', reduce('Åström', LSTART acc, val LMIDDLE acc .. ',' .. val LEND))
       call assert_equal('Å,s,t,r,ö,m', reduce('Åström', LSTART acc, val LMIDDLE acc .. ',' .. val LEND))
       call assert_equal(',a,b,c', reduce('abc', LSTART acc, val LMIDDLE acc .. ',' .. val LEND, test_null_string()))
+
+      call assert_equal(0x7d, reduce([0x30, 0x25, 0x08, 0x61], 'or'))
+      call assert_equal(0x7d, reduce(0z30250861, 'or'))
+      call assert_equal('β', reduce('ββββ', 'matchstr'))
   END
   call v9.CheckLegacyAndVim9Success(lines)
 
@@ -1003,26 +1048,28 @@ func Test_reduce()
   vim9 assert_equal({'x': 1, 'y': 1, 'z': 1 }, ['x', 'y', 'z']->reduce((acc, val) => extend(acc, {[val]: 1 }), {}))
 
   call assert_fails("call reduce([], { acc, val -> acc + val })", 'E998: Reduce of an empty List with no initial value')
+  call assert_fails("call reduce(range(0), { acc, val -> acc + val })", 'E998: Reduce of an empty List with no initial value')
   call assert_fails("call reduce(0z, { acc, val -> acc + val })", 'E998: Reduce of an empty Blob with no initial value')
+  call assert_fails("call reduce(test_null_blob(), { acc, val -> acc + val })", 'E998: Reduce of an empty Blob with no initial value')
   call assert_fails("call reduce('', { acc, val -> acc + val })", 'E998: Reduce of an empty String with no initial value')
   call assert_fails("call reduce(test_null_string(), { acc, val -> acc + val })", 'E998: Reduce of an empty String with no initial value')
 
   call assert_fails("call reduce({}, { acc, val -> acc + val }, 1)", 'E1098:')
   call assert_fails("call reduce(0, { acc, val -> acc + val }, 1)", 'E1098:')
   call assert_fails("call reduce([1, 2], 'Xdoes_not_exist')", 'E117:')
-  call assert_fails("echo reduce(0z01, { acc, val -> 2 * acc + val }, '')", 'E39:')
+  call assert_fails("echo reduce(0z01, { acc, val -> 2 * acc + val }, '')", 'E1210:')
 
   call assert_fails("vim9 reduce(0, (acc, val) => (acc .. val), '')", 'E1252:')
   call assert_fails("vim9 reduce({}, (acc, val) => (acc .. val), '')", 'E1252:')
   call assert_fails("vim9 reduce(0.1, (acc, val) => (acc .. val), '')", 'E1252:')
   call assert_fails("vim9 reduce(function('tr'), (acc, val) => (acc .. val), '')", 'E1252:')
-  call assert_fails("call reduce('', { acc, val -> acc + val }, 1)", 'E1253:')
-  call assert_fails("call reduce('', { acc, val -> acc + val }, {})", 'E1253:')
-  call assert_fails("call reduce('', { acc, val -> acc + val }, 0.1)", 'E1253:')
-  call assert_fails("call reduce('', { acc, val -> acc + val }, function('tr'))", 'E1253:')
+  call assert_fails("call reduce('', { acc, val -> acc + val }, 1)", 'E1174:')
+  call assert_fails("call reduce('', { acc, val -> acc + val }, {})", 'E1174:')
+  call assert_fails("call reduce('', { acc, val -> acc + val }, 0.1)", 'E1174:')
+  call assert_fails("call reduce('', { acc, val -> acc + val }, function('tr'))", 'E1174:')
   call assert_fails("call reduce('abc', { a, v -> a10}, '')", 'E121:')
-  call assert_fails("call reduce(0z01, { a, v -> a10}, 1)", 'E121:')
-  call assert_fails("call reduce([1], { a, v -> a10}, '')", 'E121:')
+  call assert_fails("call reduce(0z0102, { a, v -> a10}, 1)", 'E121:')
+  call assert_fails("call reduce([1, 2], { a, v -> a10}, '')", 'E121:')
 
   let g:lut = [1, 2, 3, 4]
   func EvilRemove()
@@ -1135,9 +1182,7 @@ func Test_listdict_extend()
   let l = [1, 2, 3]
   call assert_fails("call extend(l, [4, 5, 6], 4)", 'E684:')
   call assert_fails("call extend(l, [4, 5, 6], -4)", 'E684:')
-  if has('float')
-    call assert_fails("call extend(l, [4, 5, 6], 1.2)", 'E805:')
-  endif
+  call assert_fails("call extend(l, [4, 5, 6], 1.2)", 'E805:')
 
   " Test extend() with dictionaries.
 
@@ -1165,9 +1210,7 @@ func Test_listdict_extend()
   call assert_fails("call extend(d, {'b': 0, 'c':'C'}, 'error')", 'E737:')
   call assert_fails("call extend(d, {'b': 0}, [])", 'E730:')
   call assert_fails("call extend(d, {'b': 0, 'c':'C'}, 'xxx')", 'E475:')
-  if has('float')
-    call assert_fails("call extend(d, {'b': 0, 'c':'C'}, 1.2)", 'E475:')
-  endif
+  call assert_fails("call extend(d, {'b': 0, 'c':'C'}, 1.2)", 'E475:')
   call assert_equal({'a': 'A', 'b': 'B'}, d)
 
   call assert_fails("call extend([1, 2], 1)", 'E712:')
@@ -1199,11 +1242,15 @@ func Test_listdict_extendnew()
   let l = [1, 2, 3]
   call assert_equal([1, 2, 3, 4, 5], extendnew(l, [4, 5]))
   call assert_equal([1, 2, 3], l)
+  lockvar l
+  call assert_equal([1, 2, 3, 4, 5], extendnew(l, [4, 5]))
 
-  " Test extend() with dictionaries.
+  " Test extendnew() with dictionaries.
   let d = {'a': {'b': 'B'}}
   call assert_equal({'a': {'b': 'B'}, 'c': 'cc'}, extendnew(d, {'c': 'cc'}))
   call assert_equal({'a': {'b': 'B'}}, d)
+  lockvar d
+  call assert_equal({'a': {'b': 'B'}, 'c': 'cc'}, extendnew(d, {'c': 'cc'}))
 endfunc
 
 func s:check_scope_dict(x, fixed)
@@ -1341,7 +1388,7 @@ func Test_listdict_index()
   call v9.CheckLegacyAndVim9Failure(['VAR l = [1, 2, 3]', 'LET l[1.1] = 4'], ['E805:', 'E1012:', 'E805:'])
   call v9.CheckLegacyAndVim9Failure(['VAR l = [1, 2, 3]', 'LET l[: i] = [4, 5]'], ['E121:', 'E1001:', 'E121:'])
   call v9.CheckLegacyAndVim9Failure(['VAR l = [1, 2, 3]', 'LET l[: 3.2] = [4, 5]'], ['E805:', 'E1012:', 'E805:'])
-  call v9.CheckLegacyAndVim9Failure(['VAR t = test_unknown()', 'echo t[0]'], 'E685:')
+  call v9.CheckLegacyAndVim9Failure(['VAR t = test_unknown()', 'echo t[0]'], ['E340:', 'E909:', 'E340:', 'E685:'])
 endfunc
 
 " Test for a null list
@@ -1430,6 +1477,57 @@ func Test_null_dict()
   lockvar d
   call assert_equal(1, islocked('d'))
   unlockvar d
+endfunc
+
+" Test for the indexof() function
+func Test_indexof()
+  let l = [#{color: 'red'}, #{color: 'blue'}, #{color: 'green'}]
+  call assert_equal(0, indexof(l, {i, v -> v.color == 'red'}))
+  call assert_equal(2, indexof(l, {i, v -> v.color == 'green'}))
+  call assert_equal(-1, indexof(l, {i, v -> v.color == 'grey'}))
+  call assert_equal(1, indexof(l, "v:val.color == 'blue'"))
+  call assert_equal(-1, indexof(l, "v:val.color == 'cyan'"))
+
+  let l = [#{n: 10}, #{n: 10}, #{n: 20}]
+  call assert_equal(0, indexof(l, "v:val.n == 10", #{startidx: 0}))
+  call assert_equal(1, indexof(l, "v:val.n == 10", #{startidx: -2}))
+  call assert_equal(-1, indexof(l, "v:val.n == 10", #{startidx: 4}))
+  call assert_equal(-1, indexof(l, "v:val.n == 10", #{startidx: -4}))
+  call assert_equal(0, indexof(l, "v:val.n == 10", test_null_dict()))
+
+  let s = ["a", "b", "c"]
+  call assert_equal(2, indexof(s, {_, v -> v == 'c'}))
+  call assert_equal(-1, indexof(s, {_, v -> v == 'd'}))
+  call assert_equal(-1, indexof(s, {_, v -> "v == 'd'"}))
+
+  call assert_equal(-1, indexof([], {i, v -> v == 'a'}))
+  call assert_equal(-1, indexof([1, 2, 3], {_, v -> "v == 2"}))
+  call assert_equal(-1, indexof(test_null_list(), {i, v -> v == 'a'}))
+  call assert_equal(-1, indexof(l, test_null_string()))
+  call assert_equal(-1, indexof(l, test_null_function()))
+
+  " failure cases
+  call assert_fails('let i = indexof(l, "v:val == ''cyan''")', 'E735:')
+  call assert_fails('let i = indexof(l, "color == ''cyan''")', 'E121:')
+  call assert_fails('let i = indexof(l, {})', 'E1256:')
+  call assert_fails('let i = indexof({}, "v:val == 2")', 'E1226:')
+  call assert_fails('let i = indexof([], "v:val == 2", [])', 'E1206:')
+
+  func TestIdx(k, v)
+    return a:v.n == 20
+  endfunc
+  call assert_equal(2, indexof(l, function("TestIdx")))
+  delfunc TestIdx
+  func TestIdx(k, v)
+    return {}
+  endfunc
+  call assert_fails('let i = indexof(l, function("TestIdx"))', 'E728:')
+  delfunc TestIdx
+  func TestIdx(k, v)
+    throw "IdxError"
+  endfunc
+  call assert_fails('let i = indexof(l, function("TestIdx"))', 'E605:')
+  delfunc TestIdx
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

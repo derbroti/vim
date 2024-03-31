@@ -51,8 +51,9 @@ func Test_display_registers()
     call feedkeys("i\<C-R>=2*4\n\<esc>")
     call feedkeys(":ls\n", 'xt')
 
-    let a = execute('display')
-    let b = execute('registers')
+    " these commands work in the sandbox
+    let a = execute('sandbox display')
+    let b = execute('sandbox registers')
 
     call assert_equal(a, b)
     call assert_match('^\nType Name Content\n'
@@ -206,6 +207,58 @@ func Test_recording_with_select_mode()
   normal! @a
   call assert_equal("98765", getline(1))
   bwipe!
+endfunc
+
+func Run_test_recording_with_select_mode_utf8()
+  new
+
+  " Test with different text lengths: 5, 7, 9, 11, 13, 15, to check that
+  " a character isn't split between two buffer blocks.
+  for s in ['12345', '口=口', '口口口', '口=口=口', '口口=口口', '口口口口口']
+    " 0x80 is K_SPECIAL
+    " 0x9B is CSI
+    " 哦: 0xE5 0x93 0xA6
+    " 洛: 0xE6 0xB4 0x9B
+    " 固: 0xE5 0x9B 0xBA
+    " 四: 0xE5 0x9B 0x9B
+    " 最: 0xE6 0x9C 0x80
+    " 倒: 0xE5 0x80 0x92
+    " 倀: 0xE5 0x80 0x80
+    for c in ['哦', '洛', '固', '四', '最', '倒', '倀']
+      call setline(1, 'asdf')
+      call feedkeys($"qacc{s}\<Esc>gH{c}\<Esc>q", "tx")
+      call assert_equal(c, getline(1))
+      call assert_equal($"cc{s}\<Esc>gH{c}\<Esc>", @a)
+      call setline(1, 'asdf')
+      normal! @a
+      call assert_equal(c, getline(1))
+
+      " Test with Shift modifier.
+      let shift_c = eval($'"\<S-{c}>"')
+      call setline(1, 'asdf')
+      call feedkeys($"qacc{s}\<Esc>gH{shift_c}\<Esc>q", "tx")
+      call assert_equal(c, getline(1))
+      call assert_equal($"cc{s}\<Esc>gH{shift_c}\<Esc>", @a)
+      call setline(1, 'asdf')
+      normal! @a
+      call assert_equal(c, getline(1))
+    endfor
+  endfor
+
+  bwipe!
+endfunc
+
+func Test_recording_with_select_mode_utf8()
+  call Run_test_recording_with_select_mode_utf8()
+endfunc
+
+" This must be done as one of the last tests, because it starts the GUI, which
+" cannot be undone.
+func Test_zz_recording_with_select_mode_utf8_gui()
+  CheckCanRunGui
+
+  gui -f
+  call Run_test_recording_with_select_mode_utf8()
 endfunc
 
 " Test for executing the last used register (@)
@@ -411,6 +464,36 @@ func Test_clipboard_regs()
   bwipe!
 endfunc
 
+" Test unnamed for both clipboard registers (* and +)
+func Test_clipboard_regs_both_unnamed()
+  CheckNotGui
+  CheckFeature clipboard_working
+  CheckTwoClipboards
+
+  let @* = 'xxx'
+  let @+ = 'xxx'
+
+  new
+
+  set clipboard=unnamed,unnamedplus
+  call setline(1, ['foo', 'bar'])
+
+  " op_yank copies to both
+  :1
+  :normal yw
+  call assert_equal('foo', getreg('*'))
+  call assert_equal('foo', getreg('+'))
+
+  " op_delete only copies to '+'
+  :2
+  :normal dw
+  call assert_equal('foo', getreg('*'))
+  call assert_equal('bar', getreg('+'))
+
+  set clipboard&vim
+  bwipe!
+endfunc
+
 " Test for restarting the current mode (insert or virtual replace) after
 " executing the contents of a register
 func Test_put_reg_restart_mode()
@@ -489,6 +572,13 @@ func Test_get_reginfo()
         \ 'regtype': 'v'}, g:RegInfo)
   nunmap <F2>
   unlet g:RegInfo
+
+  " The type of "isunnamed" was VAR_SPECIAL but should be VAR_BOOL.  Can only
+  " be noticed when using json_encod().
+  call setreg('a', 'foo')
+  let reginfo = getreginfo('a')
+  let expected = #{regcontents: ['foo'], isunnamed: v:false, regtype: 'v'}
+  call assert_equal(json_encode(expected), json_encode(reginfo))
 
   bwipe!
 endfunc
@@ -759,6 +849,105 @@ func Test_record_in_select_mode()
   bwipe!
 endfunc
 
+" A mapping that ends recording should be removed from the recorded register.
+func Test_end_record_using_mapping()
+  new
+  call setline(1, 'aaa')
+  nnoremap s q
+  call feedkeys('safas', 'tx')
+  call assert_equal('fa', @a)
+  nunmap s
+
+  nnoremap xx q
+  call feedkeys('0xxafaxx', 'tx')
+  call assert_equal('fa', @a)
+  nunmap xx
+
+  nnoremap xsx q
+  call feedkeys('0qafaxsx', 'tx')
+  call assert_equal('fa', @a)
+  nunmap xsx
+
+  bwipe!
+endfunc
+
+" Starting a new recording should work immediately after replaying a recording
+" that ends with a <Nop> mapping or a character search.
+func Test_end_reg_executing()
+  new
+  nnoremap s <Nop>
+  let @a = 's'
+  call feedkeys("@aqaq\<Esc>", 'tx')
+  call assert_equal('', @a)
+  call assert_equal('', getline(1))
+
+  call setline(1, 'aaa')
+  nnoremap s qa
+  let @a = 'fa'
+  call feedkeys("@asq\<Esc>", 'tx')
+  call assert_equal('', @a)
+  call assert_equal('aaa', getline(1))
+
+  nunmap s
+  bwipe!
+endfunc
+
+func Test_reg_executing_in_range_normal()
+  new
+  set showcmd
+  call setline(1, range(10))
+  let g:log = []
+  nnoremap s <Cmd>let g:log += [reg_executing()]<CR>
+  let @r = 's'
+
+  %normal @r
+  call assert_equal(repeat(['r'], 10), g:log)
+
+  nunmap s
+  unlet g:log
+  set showcmd&
+  bwipe!
+endfunc
+
+" An operator-pending mode mapping shouldn't be applied to keys typed in
+" Insert mode immediately after a character search when replaying.
+func Test_replay_charsearch_omap()
+  CheckFeature timers
+
+  new
+  call setline(1, 'foo[blah]')
+  onoremap , k
+  call timer_start(10, {-> feedkeys(",bar\<Esc>q", 't')})
+  call feedkeys('qrct[', 'xt!')
+  call assert_equal(',bar[blah]', getline(1))
+  call assert_equal("ct[\<Ignore>,bar\<Esc>", @r)
+  call assert_equal('ct[<Ignore>,bar<Esc>', keytrans(@r))
+  undo
+  call assert_equal('foo[blah]', getline(1))
+  call feedkeys('@r', 'xt!')
+  call assert_equal(',bar[blah]', getline(1))
+
+  ounmap ,
+  bwipe!
+endfunc
+
+" This was causing a crash because y_append was ending up being NULL
+func Test_zero_y_append()
+  " Run in a separate Vim instance because changing 'encoding' may cause
+  " trouble for later tests.
+  let lines =<< trim END
+      d
+      silent ?n
+      next <sfile>
+      so
+      sil! norm 0VPSP
+      set enc=latin1
+       
+  END
+  call writefile(lines, 'XTest_zero_y_append', 'D')
+  call RunVim([], [], '-u NONE -i NONE -e -s -S XTest_zero_y_append -c qa\!')
+endfunc
+
 " Make sure that y_append is correctly reset
 " and the previous register is working as expected
 func Test_register_y_append_reset()
@@ -808,6 +997,38 @@ func Test_register_y_append_reset()
     \ '7',
     \ '8 ----------------------------------------------------',
     \ '9'], getline(1,'$'))
+  bwipe!
+endfunc
+
+func Test_insert_small_delete_replace_mode()
+  new
+  call setline(1, ['foo', 'bar', 'foobar',  'bar'])
+  let @- = 'foo'
+  call cursor(2, 1)
+  exe ":norm! R\<C-R>-\<C-R>-"
+  call assert_equal('foofoo', getline(2))
+  call cursor(3, 1)
+  norm! D
+  call assert_equal(['foo', 'foofoo', '',  'bar'], getline(1, 4))
+  call cursor(4, 2)
+  exe ":norm! R\<C-R>-ZZZZ"
+  call assert_equal(['foo', 'foofoo', '',  'bfoobarZZZZ'], getline(1, 4))
+  call cursor(1, 1)
+  let @- = ''
+  exe ":norm! R\<C-R>-ZZZ"
+  call assert_equal(['ZZZ', 'foofoo', '',  'bfoobarZZZZ'], getline(1, 4))
+  let @- = 'βbβ'
+  call cursor(4, 1)
+  exe ":norm! R\<C-R>-"
+  call assert_equal(['ZZZ', 'foofoo', '',  'βbβobarZZZZ'], getline(1, 4))
+  let @- = 'bβb'
+  call cursor(4, 1)
+  exe ":norm! R\<C-R>-"
+  call assert_equal(['ZZZ', 'foofoo', '',  'bβbobarZZZZ'], getline(1, 4))
+  let @- = 'βbβ'
+  call cursor(4, 1)
+  exe ":norm! R\<C-R>-"
+  call assert_equal(['ZZZ', 'foofoo', '',  'βbβobarZZZZ'], getline(1, 4))
   bwipe!
 endfunc
 

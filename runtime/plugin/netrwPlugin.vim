@@ -1,7 +1,8 @@
 " netrwPlugin.vim: Handles file transfer and remote directory listing across a network
 "            PLUGIN SECTION
+" Maintainer:	This runtime file is looking for a new maintainer.
 " Date:		Feb 09, 2021
-" Maintainer:	Charles E Campbell <NcampObell@SdrPchip.AorgM-NOSPAM>
+" Former Maintainer:   Charles E Campbell
 " GetLatestVimScripts: 1075 1 :AutoInstall: netrw.vim
 " Copyright:    Copyright (C) 1999-2021 Charles E. Campbell {{{1
 "               Permission is hereby granted to use and distribute this code,
@@ -20,7 +21,7 @@
 if &cp || exists("g:loaded_netrwPlugin")
  finish
 endif
-let g:loaded_netrwPlugin = "v171"
+let g:loaded_netrwPlugin = "v173"
 let s:keepcpo = &cpo
 set cpo&vim
 "DechoRemOn

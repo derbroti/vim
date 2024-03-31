@@ -366,7 +366,7 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                    Les 3.1: HET COMMANDO PLAK
 
-  ** Tik  p  ('put') en plak daarmee zojuist gewiste tekst na te cursor. **
+  ** Tik  p  ('put') en plak daarmee zojuist gewiste tekst na de cursor. **
 
   1. Ga met de cursor naar de eerste regel met ---> hierna.
 
@@ -927,7 +927,7 @@
       Uitgever: New Riders
   Dit is het eerste boek dat geheel aan Vim is gewijd. Speciaal geschikt
   voor beginners. Met veel voorbeelden en afbeeldingen.
-  Zie http://iccf-holland.org/click5.html
+  Zie https://iccf-holland.org/click5.html
 
   Het volgende boek is ouder en gaat meer over Vi dan Vim, maar het wordt
   toch aanbevolen:

@@ -1,7 +1,8 @@
 " Tests for Unicode manipulations
- 
+
 source check.vim
 source view_util.vim
+source screendump.vim
 
 " Visual block Insert adjusts for multi-byte char
 func Test_visual_block_insert()
@@ -28,8 +29,10 @@ func Test_strchars()
     call assert_equal(exp[i], strcharlen(inp[i]))
   endfor
 
-  call assert_fails("let v=strchars('abc', [])", 'E745:')
-  call assert_fails("let v=strchars('abc', 2)", 'E1023:')
+  call assert_fails("call strchars('abc', 2)", ['E1023:', 'E1023:'])
+  call assert_fails("call strchars('abc', -1)", ['E1023:', 'E1023:'])
+  call assert_fails("call strchars('abc', {})", ['E728:', 'E728:'])
+  call assert_fails("call strchars('abc', [])", ['E745:', 'E745:'])
 endfunc
 
 " Test for customlist completion
@@ -106,7 +109,7 @@ func Test_list2str_str2list_latin1()
 
   let save_encoding = &encoding
   set encoding=latin1
-  
+
   let lres = str2list(s, 1)
   let sres = list2str(l, 1)
   call assert_equal([65, 66, 67], str2list("ABC"))
@@ -122,7 +125,7 @@ endfunc
 func Test_screenchar_utf8()
   new
 
-  " 1-cell, with composing characters 
+  " 1-cell, with composing characters
   call setline(1, ["ABC\u0308"])
   redraw
   call assert_equal([0x0041], screenchars(1, 1))
@@ -132,7 +135,20 @@ func Test_screenchar_utf8()
   call assert_equal("B", screenstring(1, 2))
   call assert_equal("C\u0308", screenstring(1, 3))
 
-  " 2-cells, with composing characters 
+  " 1-cell, with 6 composing characters
+  set maxcombine=6
+  call setline(1, ["ABC" .. repeat("\u0308", 6)])
+  redraw
+  call assert_equal([0x0041], screenchars(1, 1))
+  call assert_equal([0x0042], 1->screenchars(2))
+  " This should not use uninitialized memory
+  call assert_equal([0x0043] + repeat([0x0308], 6), screenchars(1, 3))
+  call assert_equal("A", screenstring(1, 1))
+  call assert_equal("B", screenstring(1, 2))
+  call assert_equal("C" .. repeat("\u0308", 6), screenstring(1, 3))
+  set maxcombine&
+
+  " 2-cells, with composing characters
   let text = "\u3042\u3044\u3046\u3099"
   call setline(1, text)
   redraw
@@ -166,9 +182,42 @@ func Test_setcellwidths()
   call assert_equal(2, strwidth("\u1339"))
   call assert_equal(1, strwidth("\u133a"))
 
+  for aw in ['single', 'double']
+    exe 'set ambiwidth=' . aw
+    " Handle \u0080 to \u009F as control chars even on MS-Windows.
+    set isprint=@,161-255
+
+    call setcellwidths([])
+    " Control chars
+    call assert_equal(4, strwidth("\u0081"))
+    call assert_equal(6, strwidth("\uFEFF"))
+    " Ambiguous width chars
+    call assert_equal((aw == 'single') ? 1 : 2, strwidth("\u00A1"))
+    call assert_equal((aw == 'single') ? 1 : 2, strwidth("\u2010"))
+
+    call setcellwidths([[0x81, 0x81, 1], [0xA1, 0xA1, 1],
+                      \ [0x2010, 0x2010, 1], [0xFEFF, 0xFEFF, 1]])
+    " Control chars
+    call assert_equal(4, strwidth("\u0081"))
+    call assert_equal(6, strwidth("\uFEFF"))
+    " Ambiguous width chars
+    call assert_equal(1, strwidth("\u00A1"))
+    call assert_equal(1, strwidth("\u2010"))
+
+    call setcellwidths([[0x81, 0x81, 2], [0xA1, 0xA1, 2],
+                      \ [0x2010, 0x2010, 2], [0xFEFF, 0xFEFF, 2]])
+    " Control chars
+    call assert_equal(4, strwidth("\u0081"))
+    call assert_equal(6, strwidth("\uFEFF"))
+    " Ambiguous width chars
+    call assert_equal(2, strwidth("\u00A1"))
+    call assert_equal(2, strwidth("\u2010"))
+  endfor
+  set ambiwidth& isprint&
+
   call setcellwidths([])
 
-  call assert_fails('call setcellwidths(1)', 'E714:')
+  call assert_fails('call setcellwidths(1)', 'E1211:')
 
   call assert_fails('call setcellwidths([1, 2, 0])', 'E1109:')
 
@@ -198,6 +247,42 @@ func Test_setcellwidths()
   call setcellwidths([])
 endfunc
 
+func Test_getcellwidths()
+  call setcellwidths([])
+  call assert_equal([], getcellwidths())
+
+  let widthlist = [
+        \ [0x1330, 0x1330, 2],
+        \ [9999, 10000, 1],
+        \ [0x1337, 0x1339, 2],
+        \]
+  let widthlistsorted = [
+        \ [0x1330, 0x1330, 2],
+        \ [0x1337, 0x1339, 2],
+        \ [9999, 10000, 1],
+        \]
+  call setcellwidths(widthlist)
+  call assert_equal(widthlistsorted, getcellwidths())
+
+  call setcellwidths([])
+endfunc
+
+func Test_setcellwidths_dump()
+  CheckRunVimInTerminal
+
+  let lines =<< trim END
+      call setline(1, "\ue5ffDesktop")
+  END
+  call writefile(lines, 'XCellwidths', 'D')
+  let buf = RunVimInTerminal('-S XCellwidths', {'rows': 6})
+  call VerifyScreenDump(buf, 'Test_setcellwidths_dump_1', {})
+
+  call term_sendkeys(buf, ":call setcellwidths([[0xe5ff, 0xe5ff, 2]])\<CR>")
+  call VerifyScreenDump(buf, 'Test_setcellwidths_dump_2', {})
+
+  call StopVimInTerminal(buf)
+endfunc
+
 func Test_print_overlong()
   " Text with more composing characters than MB_MAXBYTES.
   new
@@ -205,57 +290,6 @@ func Test_print_overlong()
   s/x/\=nr2char(1629)/g
   print
   bwipe!
-endfunc
-
-func Test_recording_with_select_mode_utf8()
-  call Run_test_recording_with_select_mode_utf8()
-endfunc
-
-func Run_test_recording_with_select_mode_utf8()
-  new
-
-  " No escaping
-  call feedkeys("qacc12345\<Esc>gH哦\<Esc>q", "tx")
-  call assert_equal("哦", getline(1))
-  call assert_equal("cc12345\<Esc>gH哦\<Esc>", @a)
-  call setline(1, 'asdf')
-  normal! @a
-  call assert_equal("哦", getline(1))
-
-  " 固 is 0xE5 0x9B 0xBA where 0x9B is CSI
-  call feedkeys("qacc12345\<Esc>gH固\<Esc>q", "tx")
-  call assert_equal("固", getline(1))
-  call assert_equal("cc12345\<Esc>gH固\<Esc>", @a)
-  call setline(1, 'asdf')
-  normal! @a
-  call assert_equal("固", getline(1))
-
-  " 四 is 0xE5 0x9B 0x9B where 0x9B is CSI
-  call feedkeys("qacc12345\<Esc>gH四\<Esc>q", "tx")
-  call assert_equal("四", getline(1))
-  call assert_equal("cc12345\<Esc>gH四\<Esc>", @a)
-  call setline(1, 'asdf')
-  normal! @a
-  call assert_equal("四", getline(1))
-
-  " 倒 is 0xE5 0x80 0x92 where 0x80 is K_SPECIAL
-  call feedkeys("qacc12345\<Esc>gH倒\<Esc>q", "tx")
-  call assert_equal("倒", getline(1))
-  call assert_equal("cc12345\<Esc>gH倒\<Esc>", @a)
-  call setline(1, 'asdf')
-  normal! @a
-  call assert_equal("倒", getline(1))
-
-  bwipe!
-endfunc
-
-" This must be done as one of the last tests, because it starts the GUI, which
-" cannot be undone.
-func Test_zz_recording_with_select_mode_utf8_gui()
-  CheckCanRunGui
-
-  gui -f
-  call Run_test_recording_with_select_mode_utf8()
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab
