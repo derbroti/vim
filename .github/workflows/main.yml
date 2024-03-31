@@ -1,0 +1,19 @@
+name: Scheduled Merge Remote Action
+on: 
+  schedule:
+    - cron: '0 15 * * *'
+jobs:
+  merge-upstream:
+    runs-on: ubuntu-latest
+    steps: 
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          ref: independent-clip-regs             # set the branch to merge to
+          fetch-depth: 0 
+      - name: Merge Upstream
+        uses: exions/merge-upstream@v1.1.0
+        with:
+          upstream: vim/vim      # set the upstream repo
+          upstream-branch: master   # set the upstream branch to merge from
+          branch: independent-clip-regs          # set the branch to merge to
