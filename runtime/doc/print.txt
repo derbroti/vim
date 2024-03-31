@@ -1,4 +1,4 @@
-*print.txt*     For Vim version 8.2.  Last change: 2022 Jan 23
+*print.txt*     For Vim version 9.1.  Last change: 2022 Oct 01
 
 
 		  VIM REFERENCE MANUAL    by Bram Moolenaar
@@ -139,31 +139,34 @@ If there is no error, return zero or an empty string.
 The default for non MS-Windows or VMS systems is to simply use "lpr" to print
 the file: >
 
-    system('lpr' . (&printdevice == '' ? '' : ' -P' . &printdevice)
-	. ' ' . v:fname_in) . delete(v:fname_in) + v:shell_error
+    system('lpr' .. (&printdevice == '' ? '' : ' -P' .. &printdevice)
+	.. ' ' .. v:fname_in) .. delete(v:fname_in) + v:shell_error
 
 On MS-Windows machines the default is to copy the file to the currently
 specified printdevice: >
 
-    system('copy' . ' ' . v:fname_in . (&printdevice == ''
-		? ' LPT1:' : (' \"' . &printdevice . '\"')))
-		. delete(v:fname_in)
+    system('copy' .. ' ' .. v:fname_in .. (&printdevice == ''
+		? ' LPT1:' : (' \"' .. &printdevice .. '\"')))
+		.. delete(v:fname_in)
 
 On VMS machines the default is to send the file to either the default or
 currently specified printdevice: >
 
-    system('print' . (&printdevice == '' ? '' : ' /queue=' .
-		&printdevice) . ' ' . v:fname_in) . delete(v:fname_in)
+    system('print' .. (&printdevice == '' ? '' : ' /queue=' ..
+		&printdevice) .. ' ' .. v:fname_in) .. delete(v:fname_in)
 
 If you change this option, using a function is an easy way to avoid having to
 escape all the spaces.  Example: >
 
-	:set printexpr=PrintFile(v:fname_in)
-	:function PrintFile(fname)
-	:  call system("ghostview " . a:fname)
-	:  call delete(a:fname)
+	:set printexpr=PrintFile()
+	:function PrintFile()
+	:  call system("ghostview " .. v:fname_in)
+	:  call delete(v:fname_in)
 	:  return v:shell_error
 	:endfunc
+
+It is more efficient if the option is set to just a function call,
+see |expr-option-function|.
 
 Be aware that some print programs return control before they have read the
 file.  If you delete the file too soon it will not be printed.  These programs

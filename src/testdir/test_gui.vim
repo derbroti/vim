@@ -36,8 +36,12 @@ func Test_colorscheme()
   let g:color_count = 0
   augroup TestColors
     au!
-    au ColorScheme * let g:color_count += 1| let g:after_colors = g:color_count
-    au ColorSchemePre * let g:color_count += 1 |let g:before_colors = g:color_count
+    au ColorScheme * let g:color_count += 1
+                 \ | let g:after_colors = g:color_count
+                 \ | let g:color_after = expand('<amatch>')
+    au ColorSchemePre * let g:color_count += 1
+                    \ | let g:before_colors = g:color_count
+                    \ | let g:color_pre = expand('<amatch>')
   augroup END
 
   colorscheme torte
@@ -45,12 +49,18 @@ func Test_colorscheme()
   call assert_equal('dark', &background)
   call assert_equal(1, g:before_colors)
   call assert_equal(2, g:after_colors)
+  call assert_equal('torte', g:color_pre)
+  call assert_equal('torte', g:color_after)
   call assert_equal("\ntorte", execute('colorscheme'))
 
   let a = substitute(execute('hi Search'), "\n\\s\\+", ' ', 'g')
-  call assert_match("\nSearch         xxx term=reverse ctermfg=0 ctermbg=12 gui=bold guifg=Black guibg=Red", a)
+  " FIXME: temporarily check less while the colorscheme changes
+  " call assert_match("\nSearch         xxx term=reverse cterm=reverse ctermfg=196 ctermbg=16 gui=reverse guifg=#ff0000 guibg=#000000", a)
+  call assert_match("\nSearch         xxx term=reverse ", a)
 
   call assert_fails('colorscheme does_not_exist', 'E185:')
+  call assert_equal('does_not_exist', g:color_pre)
+  call assert_equal('torte', g:color_after)
 
   exec 'colorscheme' colorscheme_saved
   augroup TestColors
@@ -63,7 +73,7 @@ endfunc
 func Test_getfontname_with_arg()
   CheckX11BasedGui
 
-  if has('gui_athena') || has('gui_motif')
+  if has('gui_motif')
     " Invalid font name. The result should be an empty string.
     call assert_equal('', getfontname('notexist'))
 
@@ -90,7 +100,7 @@ func Test_getfontname_without_arg()
   if has('gui_kde')
     " 'expected' is the value specified by SetUp() above.
     call assert_equal('Courier 10 Pitch/8/-1/5/50/0/0/0/0/0', fname)
-  elseif has('gui_athena') || has('gui_motif')
+  elseif has('gui_motif')
     " 'expected' is DFLT_FONT of gui_x11.c or its real name.
     let pat = '\(7x13\)\|\(\c-Misc-Fixed-Medium-R-Normal--13-120-75-75-C-70-ISO8859-1\)'
     call assert_match(pat, fname)
@@ -101,6 +111,8 @@ func Test_getfontname_without_arg()
 endfunc
 
 func Test_getwinpos()
+  CheckX11
+
   call assert_match('Window position: X \d\+, Y \d\+', execute('winpos'))
   call assert_true(getwinposx() >= 0)
   call assert_true(getwinposy() >= 0)
@@ -116,9 +128,8 @@ func Test_quoteplus()
 
   let test_call     = 'Can you hear me?'
   let test_response = 'Yes, I can.'
-  let vim_exe = GetVimCommand()
-  let testee = 'VIMRUNTIME=' . $VIMRUNTIME . '; export VIMRUNTIME;'
-        \ . vim_exe . ' --noplugin --not-a-term -c ''%s'''
+  let testee = 'VIMRUNTIME=' .. $VIMRUNTIME .. '; export VIMRUNTIME;'
+        \ .. GetVimCommand() .. ' --noplugin --not-a-term -c ''%s'''
   " Ignore the "failed to create input context" error.
   let cmd = 'call test_ignore_error("E285") | '
         \ . 'gui -f | '
@@ -148,23 +159,26 @@ endfunc
 func Test_gui_read_stdin()
   CheckUnix
 
-  call writefile(['some', 'lines'], 'Xstdin')
+  call writefile(['some', 'lines'], 'Xstdin', 'D')
   let script =<< trim END
       call writefile(getline(1, '$'), 'XstdinOK')
       qa!
   END
-  call writefile(script, 'Xscript')
+  call writefile(script, 'Xscript', 'D')
 
   " Cannot use --not-a-term here, the "reading from stdin" message would not be
   " displayed.
-  let vimcmd = substitute(GetVimCommand(), '--not-a-term', '', '')
+  " However, when using XIM we might get E285, do use it then.
+  if has('xim')
+    let vimcmd = GetVimCommand()
+  else
+    let vimcmd = substitute(GetVimCommand(), '--not-a-term', '', '')
+  endif
 
   call system('cat Xstdin | ' .. vimcmd .. ' -f -g -S Xscript -')
   call assert_equal(['some', 'lines'], readfile('XstdinOK'))
 
-  call delete('Xstdin')
   call delete('XstdinOK')
-  call delete('Xscript')
 endfunc
 
 func Test_set_background()
@@ -274,7 +288,7 @@ func Test_set_balloonexpr()
     " Multiline balloon using NL
     new
     func MyBalloonFuncForMultilineUsingNL()
-      return "Multiline\nSuppported\nBalloon\nusing NL"
+      return "Multiline\nSupported\nBalloon\nusing NL"
     endfunc
     setl balloonexpr=MyBalloonFuncForMultilineUsingNL()
     setl ballooneval
@@ -289,7 +303,7 @@ func Test_set_balloonexpr()
     " Multiline balloon using List
     new
     func MyBalloonFuncForMultilineUsingList()
-      return [ 'Multiline', 'Suppported', 'Balloon', 'using List' ]
+      return [ 'Multiline', 'Supported', 'Balloon', 'using List' ]
     endfunc
     setl balloonexpr=MyBalloonFuncForMultilineUsingList()
     setl ballooneval
@@ -376,7 +390,7 @@ func Test_set_guifont()
     set guifontset=
   endif
 
-  if has('gui_athena') || has('gui_motif')
+  if has('gui_motif')
     " Non-empty font list with invalid font names.
     "
     " This test is twofold: (1) It checks if the command fails as expected
@@ -514,7 +528,7 @@ func Test_set_guifontwide()
     let &guifontwide = guifontwide_saved
     let &guifont = guifont_saved
 
-  elseif has('gui_athena') || has('gui_motif')
+  elseif has('gui_motif')
     " guifontwide is premised upon the xfontset feature.
     if !has('xfontset')
       let skipped = g:not_supported . 'xfontset'
@@ -549,8 +563,6 @@ func Test_set_guifontwide()
       catch
         call assert_exception('E598:')
       endtry
-      " Set it to an invalid value brutally for preparation.
-      let &guifontset = '-*-notexist-*'
 
       " Case 2-1: Automatic selection
       set guifontwide=
@@ -570,10 +582,60 @@ func Test_set_guifontwide()
   endif
 endfunc
 
+func Test_expand_guifont()
+  if has('gui_win32')
+    let guifont_saved = &guifont
+    let guifontwide_saved = &guifontwide
+
+    " Test recalling existing option, and suggesting current font size
+    set guifont=Courier\ New:h11:cANSI
+    call assert_equal('Courier\ New:h11:cANSI', getcompletion('set guifont=', 'cmdline')[0])
+    call assert_equal('h11', getcompletion('set guifont=Lucida\ Console:', 'cmdline')[0])
+
+    " Test auto-completion working for font names
+    call assert_equal(['Courier\ New'], getcompletion('set guifont=Couri*ew$', 'cmdline'))
+    call assert_equal(['Courier\ New'], getcompletion('set guifontwide=Couri*ew$', 'cmdline'))
+
+    " Make sure non-monospace fonts are filtered out
+    call assert_equal([], getcompletion('set guifont=Arial', 'cmdline'))
+    call assert_equal([], getcompletion('set guifontwide=Arial', 'cmdline'))
+
+    " Test auto-completion working for font options
+    call assert_notequal(-1, index(getcompletion('set guifont=Courier\ New:', 'cmdline'), 'b'))
+    call assert_equal(['cDEFAULT'], getcompletion('set guifont=Courier\ New:cD*T', 'cmdline'))
+    call assert_equal(['qCLEARTYPE'], getcompletion('set guifont=Courier\ New:qC*TYPE', 'cmdline'))
+
+    let &guifontwide = guifontwide_saved
+    let &guifont     = guifont_saved
+  elseif has('gui_gtk')
+    let guifont_saved = &guifont
+    let guifontwide_saved = &guifontwide
+
+    " Test recalling default and existing option
+    set guifont=
+    call assert_equal('Monospace\ 10', getcompletion('set guifont=', 'cmdline')[0])
+    set guifont=Monospace\ 9
+    call assert_equal('Monospace\ 9', getcompletion('set guifont=', 'cmdline')[0])
+
+    " Test auto-completion working for font names
+    call assert_equal(['Monospace'], getcompletion('set guifont=Mono*pace$', 'cmdline'))
+    call assert_equal(['Monospace'], getcompletion('set guifontwide=Mono*pace$', 'cmdline'))
+
+    " Make sure non-monospace fonts are filtered out only in 'guifont'
+    call assert_equal([], getcompletion('set guifont=Sans$', 'cmdline'))
+    call assert_equal(['Sans'], getcompletion('set guifontwide=Sans$', 'cmdline'))
+
+    let &guifontwide = guifontwide_saved
+    let &guifont     = guifont_saved
+  else
+    call assert_equal([], getcompletion('set guifont=', 'cmdline'))
+  endif
+endfunc
+
 func Test_set_guiligatures()
   CheckX11BasedGui
 
-  if has('gui_gtk') || has('gui_gtk2') || has('gui_gnome') || has('gui_gtk3')
+  if has('gui_gtk') || has('gui_gtk2') || has('gui_gnome') || has('gui_gtk3') || has('win32')
     " Try correct value
     set guiligatures=<>=ab
     call assert_equal("<>=ab", &guiligatures)
@@ -708,8 +770,11 @@ func Test_set_guioptions()
 endfunc
 
 func Test_scrollbars()
-  new
+  " this test sometimes fails on CI
+  let g:test_is_flaky = 1
+
   " buffer with 200 lines
+  new
   call setline(1, repeat(['one', 'two'], 100))
   set guioptions+=rlb
 
@@ -720,12 +785,15 @@ func Test_scrollbars()
   call assert_equal(1, winline())
   call assert_equal(11, line('.'))
 
-  " scroll to move line 1 at top, cursor stays in line 11
-  let args = #{which: 'right', value: 0, dragging: 0}
-  call test_gui_event('scrollbar', args)
-  redraw
-  call assert_equal(11, winline())
-  call assert_equal(11, line('.'))
+  " FIXME: This test should also pass with Motif and 24 lines
+  if &lines > 24 || !has('gui_motif')
+    " scroll to move line 1 at top, cursor stays in line 11
+    let args = #{which: 'right', value: 0, dragging: 0}
+    call test_gui_event('scrollbar', args)
+    redraw
+    call assert_equal(11, winline())
+    call assert_equal(11, line('.'))
+  endif
 
   set nowrap
   call setline(11, repeat('x', 150))
@@ -831,7 +899,7 @@ func Test_set_term()
 endfunc
 
 func Test_windowid_variable()
-  if g:x11_based_gui || has('win32')
+  if (g:x11_based_gui && empty($WAYLAND_DISPLAY)) || has('win32')
     call assert_true(v:windowid > 0)
   else
     call assert_equal(0, v:windowid)
@@ -841,33 +909,27 @@ endfunc
 " Test "vim -g" and also the GUIEnter autocommand.
 func Test_gui_dash_g()
   let cmd = GetVimCommand('Xscriptgui')
-  call writefile([""], "Xtestgui")
+  call writefile([""], "Xtestgui", 'D')
   let lines =<< trim END
 	au GUIEnter * call writefile(["insertmode: " . &insertmode], "Xtestgui")
 	au GUIEnter * qall
   END
-  call writefile(lines, 'Xscriptgui')
+  call writefile(lines, 'Xscriptgui', 'D')
   call system(cmd . ' -g')
   call WaitForAssert({-> assert_equal(['insertmode: 0'], readfile('Xtestgui'))})
-
-  call delete('Xscriptgui')
-  call delete('Xtestgui')
 endfunc
 
 " Test "vim -7" and also the GUIEnter autocommand.
 func Test_gui_dash_y()
   let cmd = GetVimCommand('Xscriptgui')
-  call writefile([""], "Xtestgui")
+  call writefile([""], "Xtestgui", 'D')
   let lines =<< trim END
 	au GUIEnter * call writefile(["insertmode: " . &insertmode], "Xtestgui")
 	au GUIEnter * qall
   END
-  call writefile(lines, 'Xscriptgui')
+  call writefile(lines, 'Xscriptgui', 'D')
   call system(cmd . ' -y')
   call WaitForAssert({-> assert_equal(['insertmode: 1'], readfile('Xtestgui'))})
-
-  call delete('Xscriptgui')
-  call delete('Xtestgui')
 endfunc
 
 " Test for "!" option in 'guioptions'. Use a terminal for running external
@@ -900,13 +962,17 @@ endfunc
 
 " Test GUI mouse events
 func Test_gui_mouse_event()
+  " Low level input isn't 100% reliable
+  let g:test_is_flaky = 1
+
   set mousemodel=extend
   call test_override('no_query_mouse', 1)
   new
   call setline(1, ['one two three', 'four five six'])
-
-  " place the cursor using left click in normal mode
   call cursor(1, 1)
+  redraw!
+
+  " place the cursor using left click and release in normal mode
   let args = #{button: 0, row: 2, col: 4, multiclick: 0, modifiers: 0}
   call test_gui_event('mouse', args)
   let args.button = 3
@@ -999,6 +1065,7 @@ func Test_gui_mouse_event()
   call assert_equal(['one two abc three', 'four five posix'], getline(1, '$'))
 
   %d _
+  set scrolloff=0
   call setline(1, range(1, 100))
   " scroll up
   let args = #{button: 0x200, row: 2, col: 1, multiclick: 0, modifiers: 0}
@@ -1014,6 +1081,7 @@ func Test_gui_mouse_event()
   call test_gui_event('mouse', args)
   call feedkeys("H", 'Lx!')
   call assert_equal(4, line('.'))
+  set scrolloff&
 
   %d _
   set nowrap
@@ -1169,10 +1237,21 @@ func Test_gui_mouse_event()
   call feedkeys("\<Esc>", 'Lx!')
   call assert_equal([0, 2, 7, 0], getpos('.'))
   call assert_equal('wo thrfour five sixteen', getline(2))
+
   set mouse&
   let &guioptions = save_guioptions
+  bw!
+  call test_override('no_query_mouse', 0)
+  set mousemodel&
+endfunc
 
-  " Test invalid parameters for test_gui_event()
+" Test invalid parameters for test_gui_event()
+func Test_gui_event_mouse_fails()
+  call test_override('no_query_mouse', 1)
+  new
+  call setline(1, ['one two three', 'four five six'])
+  set mousemodel=extend
+
   let args = #{row: 2, col: 4, multiclick: 0, modifiers: 0}
   call assert_false(test_gui_event('mouse', args))
   let args = #{button: 0, col: 4, multiclick: 0, modifiers: 0}
@@ -1196,6 +1275,95 @@ func Test_gui_mouse_event()
   set mousemodel&
 endfunc
 
+" Move the mouse to the top-left in preparation for mouse events
+func PrepareForMouseEvent(args)
+  call extend(a:args, #{row: 1, col: 1})
+  call test_gui_event('mouse', a:args)
+  let g:eventlist = []
+  call feedkeys('', 'Lx!')
+
+  " Wait a bit for the event.  I may not come if the mouse didn't move, wait up
+  " to 100 msec.
+  for n in range(10)
+    if len(g:eventlist) > 0
+      break
+    endif
+    sleep 10m
+  endfor
+  let g:eventlist = []
+endfunc
+
+func MouseWasMoved()
+  let pos = getmousepos()
+  call add(g:eventlist, #{row: pos.screenrow, col: pos.screencol})
+endfunc
+
+func Test_gui_mouse_move_event()
+  let args = #{move: 1, button: 0, multiclick: 0, modifiers: 0}
+
+  " by default, no mouse move events are generated
+  set mousemev&
+  call assert_false(&mousemev)
+
+  let g:eventlist = []
+  nnoremap <special> <silent> <MouseMove> :call MouseWasMoved()<CR>
+
+  " start at mouse pos (1,1), clear counter
+  call PrepareForMouseEvent(args)
+
+  call extend(args, #{row: 3, col: 30, cell: v:true})
+  call test_gui_event('mouse', args)
+  call feedkeys('', 'Lx!')
+
+  call extend(args, #{row: 10, col: 30, cell: v:true})
+  call test_gui_event('mouse', args)
+  call feedkeys('', 'Lx!')
+
+  " no events since 'mousemev' is off
+  call assert_equal([], g:eventlist)
+
+  " turn on mouse events and try the same thing
+  set mousemev
+  call PrepareForMouseEvent(args)
+
+  call extend(args, #{row: 3, col: 30, cell: v:true})
+  call test_gui_event('mouse', args)
+  call feedkeys('', 'Lx!')
+
+  call extend(args, #{row: 10, col: 30, cell: v:true})
+  call test_gui_event('mouse', args)
+  call feedkeys('', 'Lx!')
+
+  " FIXME: on MS-Windows we get a stray event first
+  if has('win32') && len(g:eventlist) == 3
+    let g:eventlist = g:eventlist[1 : ]
+  endif
+
+  call assert_equal([#{row: 3, col: 30}, #{row: 10, col: 30}], g:eventlist)
+
+  " wiggle the mouse around within a screen cell, shouldn't trigger events
+  call extend(args, #{cell: v:false})
+  call PrepareForMouseEvent(args)
+
+  call extend(args, #{row: 1, col: 2, cell: v:false})
+  call test_gui_event('mouse', args)
+  call feedkeys('', 'Lx!')
+
+  call extend(args, #{row: 2, col: 2, cell: v:false})
+  call test_gui_event('mouse', args)
+  call feedkeys('', 'Lx!')
+
+  call extend(args, #{row: 2, col: 1, cell: v:false})
+  call test_gui_event('mouse', args)
+  call feedkeys('', 'Lx!')
+
+  call assert_equal([], g:eventlist)
+
+  unlet g:eventlist
+  unmap <MouseMove>
+  set mousemev&
+endfunc
+
 " Test for 'guitablabel' and 'guitabtooltip' options
 func TestGuiTabLabel()
   call add(g:TabLabels, v:lnum + 100)
@@ -1210,8 +1378,6 @@ func TestGuiTabToolTip()
 endfunc
 
 func Test_gui_tablabel_tooltip()
-  CheckNotFeature gui_athena
-
   %bw!
   " Removing the tabline at the end of this test, reduces the window height by
   " one. Save and restore it after the test.
@@ -1254,8 +1420,6 @@ endfunc
 
 " Test for dropping files into a window in GUI
 func DropFilesInCmdLine()
-  CheckFeature drop_file
-
   call feedkeys(":\"", 'L')
   let d = #{files: ['a.c', 'b.c'], row: &lines, col: 1, modifiers: 0}
   call test_gui_event('dropfiles', d)
@@ -1313,39 +1477,41 @@ func Test_gui_drop_files()
   %argdelete
   " pressing shift when dropping files should change directory
   let save_cwd = getcwd()
-  call mkdir('Xdir1')
-  call writefile([], 'Xdir1/Xfile1')
-  call writefile([], 'Xdir1/Xfile2')
-  let d = #{files: ['Xdir1/Xfile1', 'Xdir1/Xfile2'], row: 1, col: 1,
+  call mkdir('Xdropdir1', 'R')
+  call writefile([], 'Xdropdir1/Xfile1')
+  call writefile([], 'Xdropdir1/Xfile2')
+  let d = #{files: ['Xdropdir1/Xfile1', 'Xdropdir1/Xfile2'], row: 1, col: 1,
         \ modifiers: 0x4}
   call test_gui_event('dropfiles', d)
-  call assert_equal('Xdir1', fnamemodify(getcwd(), ':t'))
+  call assert_equal('Xdropdir1', fnamemodify(getcwd(), ':t'))
   call assert_equal('Xfile1', @%)
   call chdir(save_cwd)
   " pressing shift when dropping directory and files should change directory
-  let d = #{files: ['Xdir1', 'Xdir1/Xfile2'], row: 1, col: 1, modifiers: 0x4}
+  let d = #{files: ['Xdropdir1', 'Xdropdir1/Xfile2'], row: 1, col: 1, modifiers: 0x4}
   call test_gui_event('dropfiles', d)
-  call assert_equal('Xdir1', fnamemodify(getcwd(), ':t'))
-  call assert_equal('Xdir1', fnamemodify(@%, ':t'))
+  call assert_equal('Xdropdir1', fnamemodify(getcwd(), ':t'))
+  call assert_equal('Xdropdir1', fnamemodify(@%, ':t'))
   call chdir(save_cwd)
   %bw!
   %argdelete
   " dropping a directory should edit it
-  let d = #{files: ['Xdir1'], row: 1, col: 1, modifiers: 0}
+  let d = #{files: ['Xdropdir1'], row: 1, col: 1, modifiers: 0}
   call test_gui_event('dropfiles', d)
-  call assert_equal('Xdir1', @%)
+  call assert_equal('Xdropdir1', @%)
   %bw!
   %argdelete
   " dropping only a directory name with Shift should ignore it
-  let d = #{files: ['Xdir1'], row: 1, col: 1, modifiers: 0x4}
+  let d = #{files: ['Xdropdir1'], row: 1, col: 1, modifiers: 0x4}
   call test_gui_event('dropfiles', d)
   call assert_equal('', @%)
   %bw!
   %argdelete
-  call delete('Xdir1', 'rf')
+
   " drop files in the command line. The GUI drop files adds the file names to
   " the low level input buffer. So need to use a cmdline map and feedkeys()
   " with 'Lx!' to process it in this function itself.
+  " This sometimes fails, e.g. when using valgrind.
+  let g:test_is_flaky = 1
   cnoremap <expr> <buffer> <F4> DropFilesInCmdLine()
   call feedkeys(":\"\<F4>\<CR>", 'xt')
   call feedkeys('k', 'Lx!')
@@ -1429,6 +1595,11 @@ endfunc
 
 " Test for find/replace text dialog event
 func Test_gui_findrepl()
+  " Find/Replace dialog is supported only on GTK, Motif and MS-Windows.
+  if !has('gui_gtk') && !has('gui_motif') && !has('gui_win32')
+    return
+  endif
+
   new
   call setline(1, ['one two one', 'Twoo One two oneo'])
 
@@ -1443,25 +1614,25 @@ func Test_gui_findrepl()
   call test_gui_event('findrepl', args)
   call assert_equal(['ONE TWO ONE', 'Twoo ONE TWO ONEo'], getline(1, '$'))
 
-  " Find next occurance of a string (in a find dialog)
+  " Find next occurrence of a string (in a find dialog)
   call cursor(1, 11)
   let args = #{find_text: 'TWO', repl_text: '', flags: 0x11, forward: 1}
   call test_gui_event('findrepl', args)
   call assert_equal([2, 10], [line('.'), col('.')])
 
-  " Find previous occurances of a string (in a find dialog)
+  " Find previous occurrences of a string (in a find dialog)
   call cursor(1, 11)
   let args = #{find_text: 'TWO', repl_text: '', flags: 0x11, forward: 0}
   call test_gui_event('findrepl', args)
   call assert_equal([1, 5], [line('.'), col('.')])
 
-  " Find next occurance of a string (in a replace dialog)
+  " Find next occurrence of a string (in a replace dialog)
   call cursor(1, 1)
   let args = #{find_text: 'Twoo', repl_text: '', flags: 0x2, forward: 1}
   call test_gui_event('findrepl', args)
   call assert_equal([2, 1], [line('.'), col('.')])
 
-  " Replace only the next occurance of a string (once)
+  " Replace only the next occurrence of a string (once)
   call cursor(1, 5)
   let args = #{find_text: 'TWO', repl_text: 'two', flags: 0x3, forward: 1}
   call test_gui_event('findrepl', args)
@@ -1472,6 +1643,12 @@ func Test_gui_findrepl()
   let args = #{find_text: 'TWO', repl_text: 'two', flags: 0x1C, forward: 1}
   call test_gui_event('findrepl', args)
   call assert_equal(['ONE two ONE', 'Twoo ONE two ONEo'], getline(1, '$'))
+
+  " Replace all instances with sub-replace specials
+  call cursor(1, 1)
+  let args = #{find_text: 'ONE', repl_text: '&~&', flags: 0x4, forward: 1}
+  call test_gui_event('findrepl', args)
+  call assert_equal(['&~& two &~&', 'Twoo &~& two &~&o'], getline(1, '$'))
 
   " Invalid arguments
   call assert_false(test_gui_event('findrepl', {}))
@@ -1485,6 +1662,90 @@ func Test_gui_findrepl()
   call assert_false(test_gui_event('findrepl', args))
 
   bw!
+endfunc
+
+func Test_gui_CTRL_SHIFT_V()
+  call feedkeys(":let g:str = '\<*C-S-V>\<*C-S-I>\<*C-S-V>\<*C-S-@>'\<CR>", 'tx')
+  call assert_equal('<C-S-I><C-S-@>', g:str)
+  unlet g:str
+endfunc
+
+func Test_gui_dialog_file()
+  " make sure the file does not exist, otherwise a dialog makes Vim hang
+  call delete('Xdialfile')
+
+  let lines =<< trim END
+    file Xdialfile
+    normal axxx
+    confirm qa
+  END
+  call writefile(lines, 'Xlines', 'D')
+  let prefix = '!'
+  if has('win32')
+    let prefix = '!start '
+  endif
+  execute prefix .. GetVimCommand() .. ' -g -f --clean --gui-dialog-file Xdialog -S Xlines'
+
+  call WaitForAssert({-> assert_true(filereadable('Xdialog'))})
+  call assert_match('Question: Save changes to "Xdialfile"?', readfile('Xdialog')->join('<NL>'))
+
+  call delete('Xdialog')
+  call delete('Xdialfile')
+endfunc
+
+" Test for sending low level key presses
+func SendKeys(keylist)
+  for k in a:keylist
+    call test_gui_event("key", #{event: "keydown", keycode: k})
+  endfor
+  for k in reverse(a:keylist)
+    call test_gui_event("key", #{event: "keyup", keycode: k})
+  endfor
+endfunc
+
+func Test_gui_lowlevel_keyevent()
+  CheckMSWindows
+  new
+
+  " Test for <Ctrl-A> to <Ctrl-Z> keys
+  for kc in range(65, 90)
+    call SendKeys([0x11, kc])
+    try
+      let ch = getcharstr()
+    catch /^Vim:Interrupt$/
+      let ch = "\<c-c>"
+    endtry
+    call assert_equal(nr2char(kc - 64), ch)
+  endfor
+
+  " Testing more extensive windows keyboard handling
+  " is covered in test_mswin_event.vim
+
+  bw!
+endfunc
+
+func Test_gui_macro_csi()
+  " Test for issue #11270
+  nnoremap <C-L> <Cmd>let g:triggered = 1<CR>
+  let @q = "\x9b\xfc\x04L"
+  norm @q
+  call assert_equal(1, g:triggered)
+  unlet g:triggered
+  nunmap <C-L>
+
+  " Test for issue #11057
+  inoremap <C-D>t bbb
+  call setline(1, "\t")
+  let @q = "i\x9b\xfc\x04D"
+  " The end of :normal is like a mapping timing out
+  norm @q
+  call assert_equal('', getline(1))
+  iunmap <C-D>t
+endfunc
+
+func Test_gui_csi_keytrans()
+  call assert_equal('<C-L>', keytrans("\x9b\xfc\x04L"))
+  call assert_equal('<C-D>', keytrans("\x9b\xfc\x04D"))
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

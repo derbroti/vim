@@ -1,4 +1,4 @@
-*uganda.txt*    For Vim version 8.2.  Last change: 2022 Feb 04
+*uganda.txt*    For Vim version 9.1.  Last change: 2022 Mar 02
 
 
 		  VIM REFERENCE MANUAL    by Bram Moolenaar
@@ -46,8 +46,8 @@ II) It is allowed to distribute a modified (or extended) version of Vim,
 	  maintainer will do with your changes and under what license they
 	  will be distributed is negotiable.  If there has been no negotiation
 	  then this license, or a later version, also applies to your changes.
-	  The current maintainer is Bram Moolenaar <Bram@vim.org>.  If this
-	  changes it will be announced in appropriate places (most likely
+	  The current maintainers are listed here: https://github.com/orgs/vim/people.
+	  If this changes it will be announced in appropriate places (most likely
 	  vim.sf.net, www.vim.org and/or comp.editors).  When it is completely
 	  impossible to contact the maintainer, the obligation to send him
 	  your changes ceases.  Once the maintainer has confirmed that he has
@@ -133,11 +133,12 @@ Kibaale Children's Centre		*kcc* *Kibaale*  *charity*
 Kibaale Children's Centre (KCC) is located in Kibaale, a small town in the
 south of Uganda, near Tanzania, in East Africa.  The area is known as Rakai
 District.  The population is mostly farmers.  Although people are poor, there
-is enough food.  But this district is suffering from AIDS more than any other
-part of the world.  Some say that it started there.  Estimations are that 10
-to 30% of the Ugandans are infected with HIV.  Because parents die, there are
-many orphans.  In this district about 60,000 children have lost one or both
-parents, out of a population of 350,000.  And this is still continuing.
+usually is enough food.  But this district is suffering from AIDS more than
+any other part of the world.  Some say that it started there.  Estimations are
+that in the past 10 to 30% of the Ugandans are infected with HIV.  Because
+parents die, there are many orphans.  In this district about 60,000 children
+have lost one or both parents, out of a population of 350,000.  Although AIDS
+is now mostly under control, the problems are still continuing.
 
 The children need a lot of help.  The KCC is working hard to provide the needy
 with food, medical care and education.  Food and medical care to keep them
@@ -223,7 +224,7 @@ Canada:		Contact Kuwasha in Surrey, Canada.  They take care of the
 		forwards 100% of the money to the project in Uganda.  You can
 		send them a one time donation directly.
 		Please send me a note so that I know what has been donated
-		because of Vim.  Look on their for information about
+		because of Vim.  Look on their site for information about
 		sponsorship: https://www.kuwasha.net/
 		If you make a donation to Kuwasha you will receive a tax
 		receipt which can be submitted with your tax return.
@@ -248,8 +249,8 @@ Credit Card:	You can use PayPal to send money with a Credit card.  This is
 		The e-mail address for sending the money to is:
 		    Bram@iccf-holland.org
 
-Others:		Transfer to one of these accounts if possible:
-		    ING bank: 	IBAN: NL95 INGB 0004 5487 74
+Others:		Transfer to this account if possible:
+		    ING bank:	IBAN: NL95 INGB 0004 5487 74
 				Swift code: INGBNL2A
 		    under the name "stichting ICCF Holland", Amersfoort
 		Checks are not accepted.

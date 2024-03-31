@@ -90,11 +90,18 @@ internal_format(
 	colnr_T	end_col;
 	int	wcc;			// counter for whitespace chars
 	int	did_do_comment = FALSE;
+	int	first_pass;
 
-	virtcol = get_nolist_virtcol()
+	// Cursor is currently at the end of line. No need to format
+	// if line length is less than textwidth (8 * textwidth for
+	// utf safety)
+	if (curwin->w_cursor.col < 8 * textwidth)
+	{
+	    virtcol = get_nolist_virtcol()
 		+ char2cells(c != NUL ? c : gchar_cursor());
-	if (virtcol <= (colnr_T)textwidth)
-	    break;
+	    if (virtcol <= (colnr_T)textwidth)
+		break;
+	}
 
 	if (no_leader)
 	    do_comments = FALSE;
@@ -104,7 +111,25 @@ internal_format(
 
 	// Don't break until after the comment leader
 	if (do_comments)
-	    leader_len = get_leader_len(ml_get_curline(), NULL, FALSE, TRUE);
+	{
+	    char_u *line = ml_get_curline();
+
+	    leader_len = get_leader_len(line, NULL, FALSE, TRUE);
+	    if (leader_len == 0 && curbuf->b_p_cin)
+	    {
+		int		comment_start;
+
+		// Check for a line comment after code.
+		comment_start = check_linecomment(line);
+		if (comment_start != MAXCOL)
+		{
+		    leader_len = get_leader_len(
+				      line + comment_start, NULL, FALSE, TRUE);
+		    if (leader_len != 0)
+			leader_len += comment_start;
+		}
+	    }
+	}
 	else
 	    leader_len = 0;
 
@@ -126,9 +151,17 @@ internal_format(
 	coladvance((colnr_T)textwidth);
 	wantcol = curwin->w_cursor.col;
 
-	curwin->w_cursor.col = startcol;
+	// If startcol is large (a long line), formatting takes too much
+	// time. The algorithm is O(n^2), it walks from the end of the
+	// line to textwidth border every time for each line break.
+	//
+	// Ceil to 8 * textwidth to optimize.
+	curwin->w_cursor.col = startcol < 8 * textwidth ? startcol :
+	    8 * textwidth;
+
 	foundcol = 0;
 	skip_pos = 0;
+	first_pass = TRUE;
 
 	// Find position to break at.
 	// Stop at first entered white when 'formatoptions' has 'v'
@@ -137,8 +170,11 @@ internal_format(
 		    || curwin->w_cursor.lnum != Insstart.lnum
 		    || curwin->w_cursor.col >= Insstart.col)
 	{
-	    if (curwin->w_cursor.col == startcol && c != NUL)
+	    if (first_pass && c != NUL)
+	    {
 		cc = c;
+		first_pass = FALSE;
+	    }
 	    else
 		cc = gchar_cursor();
 	    if (WHITECHAR(cc))
@@ -156,7 +192,7 @@ internal_format(
 		    // Increment count of how many whitespace chars in this
 		    // group; we only need to know if it's more than one.
 		    if (wcc < 2)
-		        wcc++;
+			wcc++;
 		}
 		if (curwin->w_cursor.col == 0 && WHITECHAR(cc))
 		    break;		// only spaces in front of text
@@ -310,7 +346,7 @@ internal_format(
 	undisplay_dollar();
 
 	// Offset between cursor position and line break is used by replace
-	// stack functions.  VREPLACE does not use this, and backspaces
+	// stack functions.  MODE_VREPLACE does not use this, and backspaces
 	// over the text instead.
 	if (State & VREPLACE_FLAG)
 	    orig_col = startcol;	// Will start backspacing from here
@@ -329,7 +365,7 @@ internal_format(
 
 	if (State & VREPLACE_FLAG)
 	{
-	    // In VREPLACE mode, we will backspace over the text to be
+	    // In MODE_VREPLACE state, we will backspace over the text to be
 	    // wrapped, so save a copy now to put on the next line.
 	    saved_text = vim_strsave(ml_get_cursor());
 	    curwin->w_cursor.col = orig_col;
@@ -353,6 +389,7 @@ internal_format(
 	open_line(FORWARD, OPENLINE_DELSPACES + OPENLINE_MARKFIX
 		+ (fo_white_par ? OPENLINE_KEEPTRAIL : 0)
 		+ (do_comments ? OPENLINE_DO_COM : 0)
+		+ OPENLINE_FORMAT
 		+ ((flags & INSCHAR_COM_LIST) ? OPENLINE_COM_LIST : 0)
 		, ((flags & INSCHAR_COM_LIST) ? second_indent : old_indent),
 		&did_do_comment);
@@ -408,7 +445,7 @@ internal_format(
 
 	if (State & VREPLACE_FLAG)
 	{
-	    // In VREPLACE mode we have backspaced over the text to be
+	    // In MODE_VREPLACE state we have backspaced over the text to be
 	    // moved, now we re-insert it into the new line.
 	    ins_bytes(saved_text);
 	    vim_free(saved_text);
@@ -418,22 +455,18 @@ internal_format(
 	    // Check if cursor is not past the NUL off the line, cindent
 	    // may have added or removed indent.
 	    curwin->w_cursor.col += startcol;
-	    len = (colnr_T)STRLEN(ml_get_curline());
+	    len = ml_get_curline_len();
 	    if (curwin->w_cursor.col > len)
 		curwin->w_cursor.col = len;
 	}
 
 	haveto_redraw = TRUE;
-#ifdef FEAT_CINDENT
 	set_can_cindent(TRUE);
-#endif
 	// moved the cursor, don't autoindent or cindent now
 	did_ai = FALSE;
-#ifdef FEAT_SMARTINDENT
 	did_si = FALSE;
 	can_si = FALSE;
 	can_si_back = FALSE;
-#endif
 	line_breakcheck();
     }
 
@@ -446,7 +479,7 @@ internal_format(
     if (!format_only && haveto_redraw)
     {
 	update_topline();
-	redraw_curbuf_later(VALID);
+	redraw_curbuf_later(UPD_VALID);
     }
 }
 
@@ -498,9 +531,7 @@ ends_in_white(linenr_T lnum)
 
     if (*s == NUL)
 	return FALSE;
-    // Don't use STRLEN() inside VIM_ISWHITE(), SAS/C complains: "macro
-    // invocation may call function multiple times".
-    l = STRLEN(s) - 1;
+    l = ml_get_len(lnum) - 1;
     return VIM_ISWHITE(s[l]);
 }
 
@@ -540,7 +571,8 @@ same_leader(
 		return FALSE;
 	    if (*p == COM_START)
 	    {
-		if (*(ml_get(lnum) + leader1_len) == NUL)
+		int line_len = ml_get_len(lnum);
+		if (line_len <= leader1_len)
 		    return FALSE;
 		if (leader2_flags == NULL || leader2_len == 0)
 		    return FALSE;
@@ -650,7 +682,7 @@ auto_format(
     // in 'formatoptions' and there is a single character before the cursor.
     // Otherwise the line would be broken and when typing another non-white
     // next they are not joined back together.
-    wasatend = (pos.col == (colnr_T)STRLEN(old));
+    wasatend = (pos.col == ml_get_curline_len());
     if (*old != NUL && !trailblank && wasatend)
     {
 	dec_cursor();
@@ -706,7 +738,7 @@ auto_format(
     if (!wasatend && has_format_option(FO_WHITE_PAR))
     {
 	new = ml_get_curline();
-	len = (colnr_T)STRLEN(new);
+	len = ml_get_curline_len();
 	if (curwin->w_cursor.col == len)
 	{
 	    pnew = vim_strnsave(new, len + 2);
@@ -736,26 +768,26 @@ check_auto_format(
     int		c = ' ';
     int		cc;
 
-    if (did_add_space)
+    if (!did_add_space)
+	return;
+
+    cc = gchar_cursor();
+    if (!WHITECHAR(cc))
+	// Somehow the space was removed already.
+	did_add_space = FALSE;
+    else
     {
-	cc = gchar_cursor();
-	if (!WHITECHAR(cc))
-	    // Somehow the space was removed already.
-	    did_add_space = FALSE;
-	else
+	if (!end_insert)
 	{
-	    if (!end_insert)
-	    {
-		inc_cursor();
-		c = gchar_cursor();
-		dec_cursor();
-	    }
-	    if (c != NUL)
-	    {
-		// The space is no longer at the end of the line, delete it.
-		del_char(FALSE);
-		did_add_space = FALSE;
-	    }
+	    inc_cursor();
+	    c = gchar_cursor();
+	    dec_cursor();
+	}
+	if (c != NUL)
+	{
+	    // The space is no longer at the end of the line, delete it.
+	    del_char(FALSE);
+	    did_add_space = FALSE;
 	}
     }
 }
@@ -779,10 +811,8 @@ comp_textwidth(
 	// The width is the window width minus 'wrapmargin' minus all the
 	// things that add to the margin.
 	textwidth = curwin->w_width - curbuf->b_p_wm;
-#ifdef FEAT_CMDWIN
-	if (cmdwin_type != 0)
+	if (curbuf == cmdwin_buf)
 	    textwidth -= 1;
-#endif
 #ifdef FEAT_FOLDING
 	textwidth -= curwin->w_p_fdc;
 #endif
@@ -825,7 +855,7 @@ op_format(
 
     if (oap->is_VIsual)
 	// When there is no change: need to remove the Visual selection
-	redraw_curbuf_later(INVERTED);
+	redraw_curbuf_later(UPD_INVERTED);
 
     if ((cmdmod.cmod_flags & CMOD_LOCKMARKS) == 0)
 	// Set '[ mark at the start of the formatted area
@@ -855,6 +885,9 @@ op_format(
     {
 	curwin->w_cursor = saved_cursor;
 	saved_cursor.lnum = 0;
+
+	// formatting may have made the cursor position invalid
+	check_cursor();
     }
 
     if (oap->is_VIsual)
@@ -885,7 +918,7 @@ op_formatexpr(oparg_T *oap)
 {
     if (oap->is_VIsual)
 	// When there is no change: need to remove the Visual selection
-	redraw_curbuf_later(INVERTED);
+	redraw_curbuf_later(UPD_INVERTED);
 
     if (fex_format(oap->start.lnum, oap->line_count, NUL) != 0)
 	// As documented: when 'formatexpr' returns non-zero fall back to
@@ -920,7 +953,7 @@ fex_format(
     // Evaluate the function.
     if (use_sandbox)
 	++sandbox;
-    r = (int)eval_to_number(fex);
+    r = (int)eval_to_number(fex, TRUE);
     if (use_sandbox)
 	--sandbox;
 
@@ -972,7 +1005,7 @@ format_lines(
     // length of a line to force formatting: 3 * 'tw'
     max_len = comp_textwidth(TRUE) * 3;
 
-    // check for 'q', '2' and '1' in 'formatoptions'
+    // check for 'q', '2', 'n' and 'w' in 'formatoptions'
     do_comments = has_format_option(FO_Q_COMS);
     do_second_indent = has_format_option(FO_Q_SECOND);
     do_number_indent = has_format_option(FO_Q_NUMBER);
@@ -1099,14 +1132,10 @@ format_lines(
 		    // indent.
 		    if (curwin->w_cursor.lnum == first_line)
 			indent = get_indent();
-		    else
-# ifdef FEAT_LISP
-		    if (curbuf->b_p_lisp)
+		    else if (curbuf->b_p_lisp)
 			indent = get_lisp_indent();
 		    else
-# endif
 		    {
-#ifdef FEAT_CINDENT
 			if (cindent_on())
 			{
 			    indent =
@@ -1116,20 +1145,19 @@ format_lines(
 				 get_c_indent();
 			}
 			else
-#endif
 			    indent = get_indent();
 		    }
 		    (void)set_indent(indent, SIN_CHANGED);
 		}
 
 		// put cursor on last non-space
-		State = NORMAL;	// don't go past end-of-line
+		State = MODE_NORMAL;	// don't go past end-of-line
 		coladvance((colnr_T)MAXCOL);
 		while (curwin->w_cursor.col && vim_isspace(gchar_cursor()))
 		    dec_cursor();
 
 		// do the formatting, without 'showmode'
-		State = INSERT;	// for open_line()
+		State = MODE_INSERT;	// for open_line()
 		smd_save = p_smd;
 		p_smd = FALSE;
 		insertchar(NUL, INSCHAR_FORMAT
@@ -1176,7 +1204,7 @@ format_lines(
 		    {
 			(void)del_bytes(indent, FALSE, FALSE);
 			mark_col_adjust(curwin->w_cursor.lnum,
-					       (colnr_T)0, 0L, (long)-indent, 0);
+					     (colnr_T)0, 0L, (long)-indent, 0);
 		    }
 		}
 		curwin->w_cursor.lnum--;
@@ -1187,7 +1215,7 @@ format_lines(
 		}
 		first_par_line = FALSE;
 		// If the line is getting long, format it next time
-		if (STRLEN(ml_get_curline()) > (size_t)max_len)
+		if (ml_get_curline_len() > max_len)
 		    force_format = TRUE;
 		else
 		    force_format = FALSE;

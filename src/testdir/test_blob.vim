@@ -118,6 +118,8 @@ func Test_blob_assign()
       LET b[1 : 1] ..= 0z55
   END
   call v9.CheckLegacyAndVim9Failure(lines, ['E734:', 'E1183:', 'E734:'])
+
+  call assert_fails('let b = readblob("a1b2c3")', 'E484:')
 endfunc
 
 func Test_blob_get_range()
@@ -210,6 +212,8 @@ func Test_blob_compare()
       call assert_true(b1 == b2)
       call assert_false(b1 is b2)
       call assert_true(b1 isnot b2)
+      call assert_true(0z != 0z10)
+      call assert_true(0z10 != 0z)
   END
   call v9.CheckLegacyAndVim9Success(lines)
 
@@ -266,7 +270,8 @@ func Test_blob_index_assign()
       VAR b = 0z00
       LET b[1] = 0x11
       LET b[2] = 0x22
-      call assert_equal(0z001122, b)
+      LET b[0] = 0x33
+      call assert_equal(0z331122, b)
   END
   call v9.CheckLegacyAndVim9Success(lines)
 
@@ -279,6 +284,18 @@ func Test_blob_index_assign()
   let lines =<< trim END
       VAR b = 0z00
       LET b[-2] = 0x33
+  END
+  call v9.CheckLegacyAndVim9Failure(lines, 'E979:')
+
+  let lines =<< trim END
+      VAR b = 0z00010203
+      LET b[0 : -1] = 0z33
+  END
+  call v9.CheckLegacyAndVim9Failure(lines, 'E979:')
+
+  let lines =<< trim END
+      VAR b = 0z00010203
+      LET b[3 : 4] = 0z3344
   END
   call v9.CheckLegacyAndVim9Failure(lines, 'E979:')
 endfunc
@@ -428,6 +445,12 @@ func Test_blob_func_remove()
 
   let lines =<< trim END
       VAR b = 0zDEADBEEF
+      call remove(b, -10)
+  END
+  call v9.CheckLegacyAndVim9Failure(lines, 'E979:')
+
+  let lines =<< trim END
+      VAR b = 0zDEADBEEF
       call remove(b, 3, 2)
   END
   call v9.CheckLegacyAndVim9Failure(lines, 'E979:')
@@ -465,9 +488,40 @@ func Test_blob_read_write()
       call writefile(b, 'Xblob')
       VAR br = readfile('Xblob', 'B')
       call assert_equal(b, br)
+      VAR br2 = readblob('Xblob')
+      call assert_equal(b, br2)
+      VAR br3 = readblob('Xblob', 1)
+      call assert_equal(b[1 :], br3)
+      VAR br4 = readblob('Xblob', 1, 2)
+      call assert_equal(b[1 : 2], br4)
+      VAR br5 = readblob('Xblob', -3)
+      call assert_equal(b[-3 :], br5)
+      VAR br6 = readblob('Xblob', -3, 2)
+      call assert_equal(b[-3 : -2], br6)
+
+      #" reading past end of file, empty result
+      VAR br1e = readblob('Xblob', 10000)
+      call assert_equal(0z, br1e)
+
+      #" reading too much, result is truncated
+      VAR blong = readblob('Xblob', -1000)
+      call assert_equal(b, blong)
+      LET blong = readblob('Xblob', -10, 8)
+      call assert_equal(b, blong)
+      LET blong = readblob('Xblob', 0, 10)
+      call assert_equal(b, blong)
+
       call delete('Xblob')
   END
   call v9.CheckLegacyAndVim9Success(lines)
+
+  if filereadable('/dev/random')
+    let b = readblob('/dev/random', 0, 10)
+    call assert_equal(10, len(b))
+  endif
+
+  call assert_fails("call readblob('notexist')", 'E484:')
+  " TODO: How do we test for the E485 error?
 
   " This was crashing when calling readfile() with a directory.
   call assert_fails("call readfile('.', 'B')", 'E17: "." is a directory')
@@ -646,9 +700,7 @@ func Test_blob_lock()
 endfunc
 
 func Test_blob_sort()
-  if has('float')
-    call v9.CheckLegacyAndVim9Failure(['call sort([1.0, 0z11], "f")'], 'E975:')
-  endif
+  call v9.CheckLegacyAndVim9Failure(['call sort([1.0, 0z11], "f")'], 'E975:')
   call v9.CheckLegacyAndVim9Failure(['call sort([11, 0z11], "N")'], 'E974:')
 endfunc
 
@@ -700,6 +752,84 @@ func Test_blob2string()
   let v ..= '01'
   exe 'let b = ' .. v
   call assert_equal(v, string(b))
+endfunc
+
+func Test_blob_repeat()
+  call assert_equal(0z, repeat(0z00, 0))
+  call assert_equal(0z00, repeat(0z00, 1))
+  call assert_equal(0z0000, repeat(0z00, 2))
+  call assert_equal(0z00000000, repeat(0z0000, 2))
+
+  call assert_equal(0z, repeat(0z12, 0))
+  call assert_equal(0z, repeat(0z1234, 0))
+  call assert_equal(0z1234, repeat(0z1234, 1))
+  call assert_equal(0z12341234, repeat(0z1234, 2))
+endfunc
+
+" Test for blob allocation failure
+func Test_blob_alloc_failure()
+  " blob variable
+  call test_alloc_fail(GetAllocId('blob_alloc'), 0, 0)
+  call assert_fails('let v = 0z10', 'E342:')
+
+  " blob slice
+  let v = 0z1020
+  call test_alloc_fail(GetAllocId('blob_alloc'), 0, 0)
+  call assert_fails('let x = v[0:0]', 'E342:')
+  call assert_equal(0z1020, x)
+
+  " blob remove()
+  let v = 0z10203040
+  call test_alloc_fail(GetAllocId('blob_alloc'), 0, 0)
+  call assert_fails('let x = remove(v, 1, 2)', 'E342:')
+  call assert_equal(0, x)
+
+  " list2blob()
+  call test_alloc_fail(GetAllocId('blob_alloc'), 0, 0)
+  call assert_fails('let a = list2blob([1, 2, 4])', 'E342:')
+  call assert_equal(0, a)
+
+  " mapnew()
+  call test_alloc_fail(GetAllocId('blob_alloc'), 0, 0)
+  call assert_fails('let x = mapnew(0z1234, {_, v -> 1})', 'E342:')
+  call assert_equal(0, x)
+
+  " copy()
+  call test_alloc_fail(GetAllocId('blob_alloc'), 0, 0)
+  call assert_fails('let x = copy(v)', 'E342:')
+  call assert_equal(0z, x)
+
+  " readblob()
+  call test_alloc_fail(GetAllocId('blob_alloc'), 0, 0)
+  call assert_fails('let x = readblob("test_blob.vim")', 'E342:')
+  call assert_equal(0, x)
+endfunc
+
+" Test for the indexof() function
+func Test_indexof()
+  let b = 0zdeadbeef
+  call assert_equal(0, indexof(b, {i, v -> v == 0xde}))
+  call assert_equal(3, indexof(b, {i, v -> v == 0xef}))
+  call assert_equal(-1, indexof(b, {i, v -> v == 0x1}))
+  call assert_equal(1, indexof(b, "v:val == 0xad"))
+  call assert_equal(-1, indexof(b, "v:val == 0xff"))
+  call assert_equal(-1, indexof(b, {_, v -> "v == 0xad"}))
+
+  call assert_equal(-1, indexof(0z, "v:val == 0x0"))
+  call assert_equal(-1, indexof(test_null_blob(), "v:val == 0xde"))
+  call assert_equal(-1, indexof(b, test_null_string()))
+  call assert_equal(-1, indexof(b, test_null_function()))
+
+  let b = 0z01020102
+  call assert_equal(1, indexof(b, "v:val == 0x02", #{startidx: 0}))
+  call assert_equal(2, indexof(b, "v:val == 0x01", #{startidx: -2}))
+  call assert_equal(-1, indexof(b, "v:val == 0x01", #{startidx: 5}))
+  call assert_equal(0, indexof(b, "v:val == 0x01", #{startidx: -5}))
+  call assert_equal(0, indexof(b, "v:val == 0x01", test_null_dict()))
+
+  " failure cases
+  call assert_fails('let i = indexof(b, "val == 0xde")', 'E121:')
+  call assert_fails('let i = indexof(b, {})', 'E1256:')
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

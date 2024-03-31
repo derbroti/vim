@@ -52,22 +52,20 @@ def Test_vim9cmd()
   END
   v9.CheckScriptFailure(lines, 'E115:')
 
-  if has('float')
-    lines =<< trim END
-        vim9script
-        echo .10
-    END
-    v9.CheckScriptSuccess(lines)
-    lines =<< trim END
-        vim9cmd echo .10
-    END
-    v9.CheckScriptSuccess(lines)
-    lines =<< trim END
-        vim9script
-        legacy echo .10
-    END
-    v9.CheckScriptFailure(lines, 'E15:')
-  endif
+  lines =<< trim END
+      vim9script
+      echo .10
+  END
+  v9.CheckScriptSuccess(lines)
+  lines =<< trim END
+      vim9cmd echo .10
+  END
+  v9.CheckScriptSuccess(lines)
+  lines =<< trim END
+      vim9script
+      legacy echo .10
+  END
+  v9.CheckScriptFailure(lines, 'E15:')
 
   echo v:version
   assert_fails('vim9cmd echo version', 'E121:')
@@ -81,6 +79,121 @@ def Test_vim9cmd()
       legacy echo version
   END
   v9.CheckScriptSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+    def Func()
+        var d: dict<string>
+        d.k .= ''
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E985:')
+  lines =<< trim END
+    vim9script
+    def Func()
+        var d: dict<string>
+        d.k ,= ''
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E1017:')
+enddef
+
+def Test_defcompile_fails()
+  assert_fails('defcompile NotExists', 'E1061:')
+  assert_fails('defcompile debug debug Test_defcompile_fails', 'E488:')
+  assert_fails('defcompile profile profile Test_defcompile_fails', 'E488:')
+enddef
+
+defcompile Test_defcompile_fails
+defcompile debug Test_defcompile_fails
+defcompile profile Test_defcompile_fails
+
+def Test_cmdmod_execute()
+  # "legacy" applies not only to the "exe" argument but also to the commands
+  var lines =<< trim END
+      vim9script
+
+      b:undo = 'let g:undone = 1 | let g:undtwo = 2'
+      legacy exe b:undo
+      assert_equal(1, g:undone)
+      assert_equal(2, g:undtwo)
+  END
+  v9.CheckScriptSuccess(lines)
+
+  # same for "vim9cmd" modifier
+  lines =<< trim END
+      let b:undo = 'g:undone = 11 | g:undtwo = 22'
+      vim9cmd exe b:undo
+      call assert_equal(11, g:undone)
+      call assert_equal(22, g:undtwo)
+  END
+  v9.CheckScriptSuccess(lines)
+  unlet b:undo
+  unlet g:undone
+  unlet g:undtwo
+
+  # "legacy" does not apply to a loaded script
+  lines =<< trim END
+      vim9script
+      export var exported = 'x'
+  END
+  writefile(lines, 'Xvim9import.vim', 'D')
+  lines =<< trim END
+      legacy exe "import './Xvim9import.vim'"
+  END
+  v9.CheckScriptSuccess(lines)
+
+  # "legacy" does not apply to a called function
+  lines =<< trim END
+      vim9script
+
+      def g:TheFunc()
+        if exists('something')
+          echo 'yes'
+        endif
+      enddef
+      legacy exe 'call g:TheFunc()'
+  END
+  v9.CheckScriptSuccess(lines)
+  delfunc g:TheFunc
+
+  # vim9cmd execute(cmd) executes code in vim9 script context
+  lines =<< trim END
+    vim9cmd execute("g:vim9executetest = 'bar'")
+    call assert_equal('bar', g:vim9executetest)
+  END
+  v9.CheckScriptSuccess(lines)
+  unlet g:vim9executetest
+
+  lines =<< trim END
+    vim9cmd execute(["g:vim9executetest1 = 'baz'", "g:vim9executetest2 = 'foo'"])
+    call assert_equal('baz', g:vim9executetest1)
+    call assert_equal('foo', g:vim9executetest2)
+  END
+  v9.CheckScriptSuccess(lines)
+  unlet g:vim9executetest1
+  unlet g:vim9executetest2
+
+  # legacy call execute(cmd) executes code in vim script context
+  lines =<< trim END
+    vim9script
+    legacy call execute("let g:vim9executetest = 'bar'")
+    assert_equal('bar', g:vim9executetest)
+  END
+  v9.CheckScriptSuccess(lines)
+  unlet g:vim9executetest
+
+  lines =<< trim END
+    vim9script
+    legacy call execute(["let g:vim9executetest1 = 'baz'", "let g:vim9executetest2 = 'foo'"])
+    assert_equal('baz', g:vim9executetest1)
+    assert_equal('foo', g:vim9executetest2)
+  END
+  v9.CheckScriptSuccess(lines)
+  unlet g:vim9executetest1
+  unlet g:vim9executetest2
 enddef
 
 def Test_edit_wildcards()
@@ -236,7 +349,7 @@ def Test_hardcopy_wildcards()
 enddef
 
 def Test_syn_include_wildcards()
-  writefile(['syn keyword Found found'], 'Xthemine.vim')
+  writefile(['syn keyword Found found'], 'Xthemine.vim', 'D')
   var save_rtp = &rtp
   &rtp = '.'
 
@@ -245,7 +358,6 @@ def Test_syn_include_wildcards()
   assert_match('Found.* contained found', execute('syn list Found'))
 
   &rtp = save_rtp
-  delete('Xthemine.vim')
 enddef
 
 def Test_echo_linebreak()
@@ -600,6 +712,20 @@ def Test_use_register()
   v9.CheckDefAndScriptFailure(lines, 'E1207:', 2)
 
   lines =<< trim END
+      @a = 'echo "text"'
+      @a
+
+  END
+  v9.CheckDefAndScriptFailure(lines, 'E1207:', 2)
+
+  lines =<< trim END
+      @a = 'echo "text"'
+      @a
+          # comment
+  END
+  v9.CheckDefAndScriptFailure(lines, 'E1207:', 2)
+
+  lines =<< trim END
       @/ = 'pattern'
       @/
   END
@@ -632,6 +758,16 @@ def Test_use_register()
   END
   v9.CheckDefAndScriptFailure(lines, 'E1207:', 2)
   $SomeEnv = ''
+
+  lines =<< trim END
+      eval 'value'
+  END
+  v9.CheckDefAndScriptFailure(lines, 'E1207:', 1)
+
+  lines =<< trim END
+      eval "value"
+  END
+  v9.CheckDefAndScriptFailure(lines, 'E1207:', 1)
 enddef
 
 def Test_environment_use_linebreak()
@@ -810,11 +946,11 @@ func Test_command_modifier_confirm()
   let lines =<< trim END
     call setline(1, 'changed')
     def Getout()
-      confirm write Xfile
+      confirm write Xcmodfile
     enddef
   END
-  call writefile(lines, 'Xconfirmscript')
-  call writefile(['empty'], 'Xfile')
+  call writefile(lines, 'Xconfirmscript', 'D')
+  call writefile(['empty'], 'Xcmodfile')
   let buf = RunVimInTerminal('-S Xconfirmscript', {'rows': 8})
   call term_sendkeys(buf, ":call Getout()\n")
   call WaitForAssert({-> assert_match('(Y)es, \[N\]o: ', term_getline(buf, 8))}, 1000)
@@ -824,10 +960,9 @@ func Test_command_modifier_confirm()
   call TermWait(buf)
   call StopVimInTerminal(buf)
 
-  call assert_equal(['changed'], readfile('Xfile'))
-  call delete('Xfile')
-  call delete('.Xfile.swp')  " in case Vim was killed
-  call delete('Xconfirmscript')
+  call assert_equal(['changed'], readfile('Xcmodfile'))
+  call delete('Xcmodfile')
+  call delete('.Xcmodfile.swp')  " in case Vim was killed
 endfunc
 
 def Test_command_modifiers_keep()
@@ -904,23 +1039,23 @@ enddef
 
 def Test_bar_line_continuation()
   var lines =<< trim END
-      au BufNewFile Xfile g:readFile = 1
+      au BufNewFile XveryNewFile g:readFile = 1
           | g:readExtra = 2
       g:readFile = 0
       g:readExtra = 0
-      edit Xfile
+      edit XveryNewFile
       assert_equal(1, g:readFile)
       assert_equal(2, g:readExtra)
       bwipe!
       au! BufNewFile
 
-      au BufNewFile Xfile g:readFile = 1
+      au BufNewFile XveryNewFile g:readFile = 1
           | g:readExtra = 2
           | g:readMore = 3
       g:readFile = 0
       g:readExtra = 0
       g:readMore = 0
-      edit Xfile
+      edit XveryNewFile
       assert_equal(1, g:readFile)
       assert_equal(2, g:readExtra)
       assert_equal(3, g:readMore)
@@ -944,13 +1079,13 @@ def Test_command_modifier_other()
   edit Xsomefile
   bwipe!
 
-  au BufNewFile Xfile g:readFile = 1
+  au BufNewFile Xcmofile g:readFile = 1
   g:readFile = 0
-  edit Xfile
+  edit Xcmofile
   assert_equal(1, g:readFile)
   bwipe!
   g:readFile = 0
-  noautocmd edit Xfile
+  noautocmd edit Xcmofile
   assert_equal(0, g:readFile)
   au! BufNewFile
   unlet g:readFile
@@ -1082,6 +1217,16 @@ def Test_useless_command_modifier()
       silent endtry
   END
   v9.CheckDefAndScriptFailure(lines, 'E1176:', 3)
+
+  lines =<< trim END
+      leftabove
+  END
+  v9.CheckDefAndScriptFailure(lines, 'E1082:', 1)
+
+  lines =<< trim END
+      leftabove # comment
+  END
+  v9.CheckDefAndScriptFailure(lines, 'E1082:', 1)
 enddef
 
 def Test_eval_command()
@@ -1117,8 +1262,19 @@ def Test_map_command()
       nnoremap <F3> :echo 'hit F3 #'<CR>
       assert_equal(":echo 'hit F3 #'<CR>", maparg("<F3>", "n"))
   END
-  v9.CheckDefSuccess(lines)
-  v9.CheckScriptSuccess(['vim9script'] + lines)
+  v9.CheckDefAndScriptSuccess(lines)
+
+  # backslash before bar is not removed
+  lines =<< trim END
+      vim9script
+
+      def Init()
+        noremap <buffer> <F5> <ScriptCmd>MyFunc('a') \| MyFunc('b')<CR>
+      enddef
+      Init()
+      unmap <buffer> <F5>
+  END
+  v9.CheckScriptSuccess(lines)
 enddef
 
 def Test_normal_command()
@@ -1156,7 +1312,7 @@ def Test_put_command()
   :2put =['a', 'b', 'c']
   assert_equal(['ppp', 'a', 'b', 'c', 'above'], getline(2, 6))
 
-  :0put ='first'
+  :0put =  'first'
   assert_equal('first', getline(1))
   :1put! ='first again'
   assert_equal('first again', getline(1))
@@ -1265,7 +1421,7 @@ def Test_star_command()
 enddef
 
 def Test_cmd_argument_without_colon()
-  new Xfile
+  new Xawcfile
   setline(1, ['a', 'b', 'c', 'd'])
   write
   edit +3 %
@@ -1273,7 +1429,7 @@ def Test_cmd_argument_without_colon()
   edit +/a %
   assert_equal(1, getcurpos()[1])
   bwipe
-  delete('Xfile')
+  delete('Xawcfile')
 enddef
 
 def Test_ambiguous_user_cmd()
@@ -1291,12 +1447,19 @@ def Test_command_not_recognized()
   var lines =<< trim END
     d.key = 'asdf'
   END
-  v9.CheckDefFailure(lines, 'E1146:', 1)
+  v9.CheckDefFailure(lines, 'E1089: Unknown variable: d', 1)
 
   lines =<< trim END
     d['key'] = 'asdf'
   END
-  v9.CheckDefFailure(lines, 'E1146:', 1)
+  v9.CheckDefFailure(lines, 'E1089: Unknown variable: d', 1)
+
+  lines =<< trim END
+    if 0
+      d.key = 'asdf'
+    endif
+  END
+  v9.CheckDefSuccess(lines)
 enddef
 
 def Test_magic_not_used()
@@ -1459,7 +1622,26 @@ def Test_lockvar()
   d.a = 7
   assert_equal({a: 7, b: 5}, d)
 
+  caught = false
+  try
+    lockvar d.c
+  catch /E716/
+    caught = true
+  endtry
+  assert_true(caught)
+
   var lines =<< trim END
+      vim9script
+      g:bl = 0z1122
+      lockvar g:bl
+      def Tryit()
+        g:bl[1] = 99
+      enddef
+      Tryit()
+  END
+  v9.CheckScriptFailure(lines, 'E741:', 1)
+
+  lines =<< trim END
       vim9script
       var theList = [1, 2, 3]
       def SetList()
@@ -1471,6 +1653,58 @@ def Test_lockvar()
       SetList()
   END
   v9.CheckScriptFailure(lines, 'E1119', 4)
+
+  lines =<< trim END
+      vim9script
+      var theList = [1, 2, 3]
+      def AddToList()
+        lockvar theList
+        theList += [4]
+      enddef
+      AddToList()
+  END
+  v9.CheckScriptFailure(lines, 'E741', 2)
+
+  lines =<< trim END
+      vim9script
+      var theList = [1, 2, 3]
+      def AddToList()
+        lockvar theList
+        add(theList, 4)
+      enddef
+      AddToList()
+  END
+  v9.CheckScriptFailure(lines, 'E741', 2)
+
+  # can unlet a locked list item but not change it
+  lines =<< trim END
+    var ll = [1, 2, 3]
+    lockvar ll[1]
+    unlet ll[1]
+    assert_equal([1, 3], ll)
+  END
+  v9.CheckDefAndScriptSuccess(lines)
+  lines =<< trim END
+    var ll = [1, 2, 3]
+    lockvar ll[1]
+    ll[1] = 9
+  END
+  v9.CheckDefExecAndScriptFailure(lines, ['E1119:', 'E741'], 3)
+
+  # can unlet a locked dict item but not change it
+  lines =<< trim END
+    var dd = {a: 1, b: 2}
+    lockvar dd.a
+    unlet dd.a
+    assert_equal({b: 2}, dd)
+  END
+  v9.CheckDefAndScriptSuccess(lines)
+  lines =<< trim END
+    var dd = {a: 1, b: 2}
+    lockvar dd.a
+    dd.a = 3
+  END
+  v9.CheckDefExecAndScriptFailure(lines, ['E1121:', 'E741'], 3)
 
   lines =<< trim END
       var theList = [1, 2, 3]
@@ -1500,6 +1734,39 @@ def Test_lockvar()
       LockIt()
   END
   v9.CheckScriptFailure(lines, 'E1246', 1)
+
+  lines =<< trim END
+      vim9script
+      const name = 'john'
+      unlockvar name
+  END
+  v9.CheckScriptFailure(lines, 'E46', 3)
+
+  lines =<< trim END
+      vim9script
+      const name = 'john'
+      def UnLockIt()
+        unlockvar name
+      enddef
+      UnLockIt()
+  END
+  v9.CheckScriptFailure(lines, 'E46', 1)
+
+  lines =<< trim END
+      def _()
+        lockv
+      enddef
+      defcomp
+  END
+  v9.CheckScriptFailure(lines, 'E179', 1)
+
+  lines =<< trim END
+      def T()
+        unlet
+      enddef
+      defcomp
+  END
+  v9.CheckScriptFailure(lines, 'E179', 1)
 enddef
 
 def Test_substitute_expr()
@@ -1524,10 +1791,15 @@ def Test_substitute_expr()
   endfor
   assert_equal('yes no abc', getline(1))
 
+  setline(1, 'from')
+  v9.CheckDefExecFailure(['s/from/\=g:notexist/'], 'E121: Undefined variable: g:notexist')
+
   bwipe!
 
   v9.CheckDefFailure(['s/from/\="x")/'], 'E488:')
   v9.CheckDefFailure(['s/from/\="x"/9'], 'E488:')
+
+  v9.CheckDefExecFailure(['s/this/\="that"/'], 'E486:')
 
   # When calling a function the right instruction list needs to be restored.
   g:cond = true
@@ -1560,6 +1832,11 @@ def Test_substitute_expr()
   s/text/\=['aaa', 'bbb', 'ccc']/
   assert_equal(['some aaa', 'bbb', 'ccc', ' here'], getline(1, '$'))
   bwipe!
+
+  # inside "if 0" substitute is ignored
+  if 0
+    s/a/\=nothing/ and | some more
+  endif
 enddef
 
 def Test_redir_to_var()
@@ -1603,6 +1880,12 @@ def Test_redir_to_var()
   v9.CheckDefFailure(lines, 'E1089:')
 
   lines =<< trim END
+    var text: string
+    redir => text
+  END
+  v9.CheckDefFailure(lines, 'E1185:')
+
+  lines =<< trim END
     var ls = 'asdf'
     redir => ls[1]
     redir END
@@ -1613,7 +1896,7 @@ def Test_redir_to_var()
       var text: string
       redir => text
         echo 'hello'
-        redir > Xfile
+        redir > Xnopfile
       redir END
   END
   v9.CheckDefFailure(lines, 'E1092:')
@@ -1667,7 +1950,7 @@ def Test_var_not_cmd()
   var lines =<< trim END
       g:notexist:cmd
   END
-  v9.CheckDefAndScriptFailure(lines, ['E488: Trailing characters: :cmd', 'E121: Undefined variable: g:notexist'], 1)
+  v9.CheckDefAndScriptFailure(lines, ['E1016: Cannot declare a global variable: g:notexist', "E1069: White space required after ':'"], 1)
 
   lines =<< trim END
       g-pat-cmd
@@ -1681,7 +1964,12 @@ def Test_var_not_cmd()
   lines =<< trim END
       s:notexist:repl
   END
-  v9.CheckDefAndScriptFailure(lines, ['E488: Trailing characters: :repl', 'E121: Undefined variable: s:notexist'], 1)
+  v9.CheckDefAndScriptFailure(lines, ['E1101: Cannot declare a script variable in a function: s:notexist', "E1069: White space required after ':'"], 1)
+
+  lines =<< trim END
+      notexist:repl
+  END
+  v9.CheckDefAndScriptFailure(lines, ['E476:', 'E492:'], 1)
 
   lines =<< trim END
       s-pat-repl
@@ -1717,14 +2005,18 @@ def Test_no_space_after_command()
       g #pat#cmd
   END
   v9.CheckDefAndScriptFailure(lines, 'E1242:', 1)
+
+  new
+  setline(1, 'some pat')
   lines =<< trim END
-      g#pat#cmd
+      g#pat#print
   END
   v9.CheckDefAndScriptSuccess(lines)
   lines =<< trim END
-      g# pat#cmd
+      g# pat#print
   END
   v9.CheckDefAndScriptSuccess(lines)
+  bwipe!
 
   lines =<< trim END
       s /pat/repl
@@ -1747,10 +2039,10 @@ enddef
 " Test for the 'previewpopup' option
 def Test_previewpopup()
   set previewpopup=height:10,width:60
-  pedit Xfile
+  pedit Xppfile
   var id = popup_findpreview()
   assert_notequal(id, 0)
-  assert_match('Xfile', popup_getoptions(id).title)
+  assert_match('Xppfile', popup_getoptions(id).title)
   popup_clear()
   set previewpopup&
 enddef

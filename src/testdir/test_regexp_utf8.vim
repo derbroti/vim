@@ -1,5 +1,7 @@
 " Tests for regexp in utf8 encoding
 
+source shared.vim
+
 func s:equivalence_test()
   let str = "AÀÁÂÃÄÅĀĂĄǍǞǠǺȂȦȺḀẠẢẤẦẨẪẬẮẰẲẴẶ BƁɃḂḄḆ CÇĆĈĊČƇȻḈꞒ DĎĐƊḊḌḎḐḒ EÈÉÊËĒĔĖĘĚȄȆȨɆḔḖḘḚḜẸẺẼẾỀỂỄỆ FƑḞꞘ GĜĞĠĢƓǤǦǴḠꞠ HĤĦȞḢḤḦḨḪⱧ IÌÍÎÏĨĪĬĮİƗǏȈȊḬḮỈỊ JĴɈ KĶƘǨḰḲḴⱩꝀ LĹĻĽĿŁȽḶḸḺḼⱠ MḾṀṂ NÑŃŅŇǸṄṆṈṊꞤ OÒÓÔÕÖØŌŎŐƟƠǑǪǬǾȌȎȪȬȮȰṌṎṐṒỌỎỐỒỔỖỘỚỜỞỠỢ PƤṔṖⱣ QɊ RŔŖŘȐȒɌṘṚṜṞⱤꞦ SŚŜŞŠȘṠṢṤṦṨⱾꞨ TŢŤŦƬƮȚȾṪṬṮṰ UÙÚÛÜŨŪŬŮŰƯǕǙǛǓǗȔȖɄṲṴṶṸṺỤỦỨỪỬỮỰ  VƲṼṾ WŴẀẂẄẆẈ XẊẌ YÝŶŸƳȲɎẎỲỴỶỸ ZŹŻŽƵẐẒẔⱫ aàáâãäåāăąǎǟǡǻȃȧᶏḁẚạảấầẩẫậắằẳẵặⱥ bƀɓᵬᶀḃḅḇ cçćĉċčƈȼḉꞓꞔ dďđɗᵭᶁᶑḋḍḏḑḓ eèéêëēĕėęěȅȇȩɇᶒḕḗḙḛḝẹẻẽếềểễệ fƒᵮᶂḟꞙ gĝğġģǥǧǵɠᶃḡꞡ hĥħȟḣḥḧḩḫẖⱨꞕ iìíîïĩīĭįǐȉȋɨᶖḭḯỉị jĵǰɉ kķƙǩᶄḱḳḵⱪꝁ lĺļľŀłƚḷḹḻḽⱡ mᵯḿṁṃ nñńņňŉǹᵰᶇṅṇṉṋꞥ oòóôõöøōŏőơǒǫǭǿȍȏȫȭȯȱɵṍṏṑṓọỏốồổỗộớờởỡợ pƥᵱᵽᶈṕṗ qɋʠ rŕŗřȑȓɍɽᵲᵳᶉṛṝṟꞧ sśŝşšșȿᵴᶊṡṣṥṧṩꞩ tţťŧƫƭțʈᵵṫṭṯṱẗⱦ uùúûüũūŭůűųǚǖưǔǘǜȕȗʉᵾᶙṳṵṷṹṻụủứừửữự vʋᶌṽṿ wŵẁẃẅẇẉẘ xẋẍ yýÿŷƴȳɏẏẙỳỵỷỹ zźżžƶᵶᶎẑẓẕⱬ"
   let groups = split(str)
@@ -226,8 +228,7 @@ func Test_multibyte_chars()
   "  When there is no match use only the first two items.
   let tl = []
 
-  " Multi-byte character tests. These will fail unless vim is compiled
-  " with Multibyte (FEAT_MBYTE) or BIG/HUGE features.
+  " Multi-byte character tests.
   call add(tl, [2, '[[:alpha:][=a=]]\+', '879 aiaãâaiuvna ', 'aiaãâaiuvna'])
   call add(tl, [2, '[[=a=]]\+', 'ddaãâbcd', 'aãâ'])								" equivalence classes
   call add(tl, [2, '[^ม ]\+', 'มม oijasoifjos ifjoisj f osij j มมมมม abcd', 'oijasoifjos'])
@@ -508,7 +509,6 @@ endfunc
 " Check that [[:upper:]] matches for automatic engine
 func Test_match_char_class_upper()
   new
-  let _engine=&regexpengine
 
   " Test 1: [[:upper:]]\{2,\}
   set regexpengine=0
@@ -549,16 +549,42 @@ func Test_match_char_class_upper()
   call assert_equal(4, searchcount().total, 'TEST 3 lower')
 
   " clean up
-  let &regexpengine=_engine
+  set regexpengine=0
   bwipe!
 endfunc
 
 func Test_match_invalid_byte()
-  call writefile(0z630a.765d30aa0a.2e0a.790a.4030, 'Xinvalid')
+  call writefile(0z630a.765d30aa0a.2e0a.790a.4030, 'Xinvalid', 'D')
   new
   source Xinvalid
   bwipe!
-  call delete('Xinvalid')
+endfunc
+
+func Test_match_illegal_byte()
+  " Text has illegal bytes which need to be set explicitly
+  let lines = ["norm :set no\x01\<CR>", "silent n\xff", "silent norm :b\xff\<CR>"]
+  call writefile(lines, 'Xregexp', 'D')
+  call system(GetVimCommand() .. ' -X -Z -e -s -S Xregexp -c qa!')
+endfunc
+
+func Test_match_too_complicated()
+  set regexpengine=1
+  exe "noswapfile vsplit \xeb\xdb\x99"
+  silent! buf \&\zs*\zs*0
+  bwipe!
+  set regexpengine=0
+endfunc
+
+func Test_combining_chars_in_collection()
+  new
+  for i in range(0,2)
+    exe "set re=".i
+    put =['ɔ̃', 'ɔ',  '̃  ã', 'abcd']
+    :%s/[ɔ̃]//
+    call assert_equal(['', '', 'ɔ', '̃  ã', 'abcd'], getline(1,'$'))
+    %d
+  endfor
+  bw!
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab
